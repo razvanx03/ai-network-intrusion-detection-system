@@ -4,10 +4,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { LoadingOrb } from "@/components/ui/loading-orb";
 import AppLayout from "@/layouts/AppLayout";
 
+const PROTECTED_PATHS = ["/dashboard", "/connections"];
+
 export const ProtectedRoute: React.FC = () => {
   const location = useLocation();
   const { isAuthenticated, isLoading } = useAuth();
   const isLoginPage = location.pathname === "/login";
+  const isProtectedPath = PROTECTED_PATHS.includes(location.pathname);
 
   // Redirect root / directly to /dashboard
   if (location.pathname === "/") {
@@ -31,12 +34,24 @@ export const ProtectedRoute: React.FC = () => {
     );
   }
 
-  // Not authenticated -> redirect to /login
+  // Unknown route (404 Not Found): render inside AppLayout if logged in, or standalone if logged out
+  if (!isProtectedPath) {
+    if (isAuthenticated) {
+      return (
+        <AppLayout>
+          <Outlet />
+        </AppLayout>
+      );
+    }
+    return <Outlet />;
+  }
+
+  // Known protected route when not authenticated -> redirect to /login
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  // Authenticated -> wrap page in main AppLayout
+  // Authenticated on protected route -> wrap page in main AppLayout
   return (
     <AppLayout>
       <Outlet />

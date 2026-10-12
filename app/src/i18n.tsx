@@ -89,6 +89,12 @@ export const translations = {
     th_duration: "Durata",
     th_bytes: "Bytes (Orig / Resp)",
     th_packets: "Pachete",
+
+    // 404 Not Found Page
+    not_found_title: "Pagina nu a fost gasita",
+    not_found_desc: "Ruta pe care ati incercat sa o accesati nu exista in aplicatie.",
+    not_found_back_dashboard: "Inapoi la Dashboard",
+    not_found_back_login: "Inapoi la Autentificare",
   },
   en: {
     // App & Layout
@@ -174,6 +180,12 @@ export const translations = {
     th_duration: "Duration",
     th_bytes: "Bytes (Orig / Resp)",
     th_packets: "Packets",
+
+    // 404 Not Found Page
+    not_found_title: "Page Not Found",
+    not_found_desc: "The route you tried to access does not exist in the application.",
+    not_found_back_dashboard: "Back to Dashboard",
+    not_found_back_login: "Back to Sign In",
   },
 } as const;
 
