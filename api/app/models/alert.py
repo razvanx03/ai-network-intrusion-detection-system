@@ -1,0 +1,44 @@
+from datetime import datetime, timezone
+from typing import Optional
+from sqlalchemy import String, Integer, Float, DateTime, Text, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.database.base import Base
+
+
+class Alert(Base):
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+        nullable=False
+    )
+    connection_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("connections.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    src_ip: Mapped[str] = mapped_column(String(45), index=True, nullable=False)
+    dst_ip: Mapped[str] = mapped_column(String(45), index=True, nullable=False)
+    dst_port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    attack_type: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), index=True, nullable=False)  # LOW, MEDIUM, HIGH, CRITICAL
+    confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    detector: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    mitre_technique: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="NEW",
+        index=True,
+        nullable=False
+    )  # NEW, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    connection = relationship("Connection", lazy="joined")

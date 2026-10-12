@@ -1,0 +1,7 @@
+[
+  {"ts": 1712860001.12, "uid": "C9x01A1", "id.orig_h": "192.168.1.45", "id.orig_p": 51234, "id.resp_h": "10.10.1.5", "id.resp_p": 53, "proto": "udp", "service": "dns", "duration": 0.012, "orig_bytes": 68, "resp_bytes": 142, "conn_state": "SF", "orig_pkts": 1, "resp_pkts": 1, "history": "Dd"},
+  {"ts": 1712860002.35, "uid": "C9x01A2", "id.orig_h": "192.168.1.45", "id.orig_p": 51235, "id.resp_h": "142.250.180.206", "id.resp_p": 443, "proto": "tcp", "service": "ssl", "duration": 4.521, "orig_bytes": 1520, "resp_bytes": 14200, "conn_state": "SF", "orig_pkts": 14, "resp_pkts": 22, "history": "ShADadFf"},
+  {"ts": 1712860003.88, "uid": "C9x01A3", "id.orig_h": "192.168.1.102", "id.orig_p": 49812, "id.resp_h": "10.10.2.1", "id.resp_p": 80, "proto": "tcp", "service": "http", "duration": 0.124, "orig_bytes": 450, "resp_bytes": 2840, "conn_state": "SF", "orig_pkts": 6, "resp_pkts": 8, "history": "ShADadfF"},
+  {"ts": 1712860005.10, "uid": "C9x01A4", "id.orig_h": "192.168.1.88", "id.orig_p": 54201, "id.resp_h": "10.10.1.5", "id.resp_p": 53, "proto": "udp", "service": "dns", "duration": 0.008, "orig_bytes": 62, "resp_bytes": 128, "conn_state": "SF", "orig_pkts": 1, "resp_pkts": 1, "history": "Dd"},
+  {"ts": 1712860006.42, "uid": "C9x01A5", "id.orig_h": "192.168.1.88", "id.orig_p": 54202, "id.resp_h": "151.101.65.140", "id.resp_p": 443, "proto": "tcp", "service": "ssl", "duration": 2.110, "orig_bytes": 890, "resp_bytes": 6400, "conn_state": "SF", "orig_pkts": 10, "resp_pkts": 15, "history": "ShADadFf"}
+]

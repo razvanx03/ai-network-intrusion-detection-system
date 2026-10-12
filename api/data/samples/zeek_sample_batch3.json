@@ -1,0 +1,7 @@
+[
+  {"ts": 1712860200.10, "uid": "Cssh01", "id.orig_h": "192.168.1.201", "id.orig_p": 44101, "id.resp_h": "10.10.20.10", "id.resp_p": 22, "proto": "tcp", "service": "ssh", "duration": 0.45, "orig_bytes": 1050, "resp_bytes": 1420, "conn_state": "SF", "orig_pkts": 12, "resp_pkts": 10, "history": "ShADadFf"},
+  {"ts": 1712860201.20, "uid": "Cssh02", "id.orig_h": "192.168.1.201", "id.orig_p": 44102, "id.resp_h": "10.10.20.10", "id.resp_p": 22, "proto": "tcp", "service": "ssh", "duration": 0.42, "orig_bytes": 1050, "resp_bytes": 1420, "conn_state": "SF", "orig_pkts": 12, "resp_pkts": 10, "history": "ShADadFf"},
+  {"ts": 1712860202.30, "uid": "Cssh03", "id.orig_h": "192.168.1.201", "id.orig_p": 44103, "id.resp_h": "10.10.20.10", "id.resp_p": 22, "proto": "tcp", "service": "ssh", "duration": 0.41, "orig_bytes": 1050, "resp_bytes": 1420, "conn_state": "SF", "orig_pkts": 12, "resp_pkts": 10, "history": "ShADadFf"},
+  {"ts": 1712860203.40, "uid": "Cssh04", "id.orig_h": "192.168.1.201", "id.orig_p": 44104, "id.resp_h": "10.10.20.10", "id.resp_p": 22, "proto": "tcp", "service": "ssh", "duration": 0.39, "orig_bytes": 1050, "resp_bytes": 1420, "conn_state": "SF", "orig_pkts": 12, "resp_pkts": 10, "history": "ShADadFf"},
+  {"ts": 1712860204.50, "uid": "Cssh05", "id.orig_h": "192.168.1.201", "id.orig_p": 44105, "id.resp_h": "10.10.20.10", "id.resp_p": 22, "proto": "tcp", "service": "ssh", "duration": 0.44, "orig_bytes": 1050, "resp_bytes": 1420, "conn_state": "SF", "orig_pkts": 12, "resp_pkts": 10, "history": "ShADadFf"}
+]
