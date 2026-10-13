@@ -44,6 +44,11 @@ ai-network-intrusion-detection-system/
 │   │   ├── constants.ts          # Strict environment variable validation
 │   │   └── i18n.tsx              # Centralized RO/EN translations & theme provider
 │   └── package.json
+├── sensor_agent/                 # Edge Collector: Lightweight daemon running on the Zeek VM
+│   ├── collector.py              # Incremental log reader & authenticated REST API
+│   ├── install_zeek.sh           # Automated Zeek installation script for Ubuntu/Debian
+│   ├── requirements.txt          # Minimal Python dependencies (FastAPI, uvicorn)
+│   └── README.md                 # Standalone setup and deployment guide for the VM
 ├── .env                          # Local environment configuration (git-ignored)
 └── .env.example                  # Environment configuration template
 ```

@@ -9,8 +9,26 @@ import {
   Sparkles,
   Server,
   Check,
-  AlertCircle
+  AlertCircle,
+  BarChart3,
+  PieChart as PieChartIcon,
+  Activity,
+  FileSpreadsheet,
+  FileCode
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  CartesianGrid
+} from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +62,7 @@ export default function DashboardPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isResettingSensor, setIsResettingSensor] = useState(false);
   const [isClearingDb, setIsClearingDb] = useState(false);
+  const [isExporting, setIsExporting] = useState<string | null>(null);
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
@@ -118,6 +137,18 @@ export default function DashboardPage() {
     }
   };
 
+  // Action 4: Export Rapoarte
+  const handleExport = async (format: "csv" | "json") => {
+    setIsExporting(format);
+    try {
+      await api.downloadAlertsExport(format, severityFilter || undefined);
+    } catch (err: any) {
+      console.error("Export failed:", err);
+    } finally {
+      setIsExporting(null);
+    }
+  };
+
   // Status transition on alert
   const handleResolveAlert = async (id: number) => {
     try {
@@ -143,6 +174,52 @@ export default function DashboardPage() {
     }
   };
 
+  // Data mapping for charts
+  const attackTypeColors: Record<string, string> = {
+    "SSH Brute-Force": "#f43f5e",
+    "Port Scan": "#f97316",
+    "DoS / SYN Flood": "#a855f7",
+    "Statistical Anomaly": "#38bdf8",
+  };
+
+  const attackTypeData = (stats.top_attack_types || []).map((item: any) => ({
+    name: item.attack_type,
+    value: item.count,
+    color: attackTypeColors[item.attack_type] || "#3b82f6",
+  }));
+
+  const severityData = [
+    { name: "CRITICAL", count: stats.critical_count || 0, color: "#f43f5e" },
+    { name: "HIGH", count: stats.high_count || 0, color: "#f97316" },
+    { name: "MEDIUM", count: stats.medium_count || 0, color: "#f59e0b" },
+    { name: "LOW", count: stats.low_count || 0, color: "#10b981" },
+  ];
+
+  const topIpsData = (stats.top_attacking_ips || []).map((item: any) => ({
+    name: item.src_ip,
+    count: item.count,
+  }));
+
+  const CustomChartTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0];
+      return (
+        <div className="bg-slate-900/95 border border-slate-800 rounded-lg p-2.5 shadow-2xl text-xs space-y-1 pointer-events-none select-none">
+          <p className="font-semibold text-slate-200">{label || data.name}</p>
+          <p className="text-slate-400 flex items-center gap-1.5">
+            <span
+              className="w-2 h-2 rounded-full inline-block shrink-0"
+              style={{ backgroundColor: data.color || data.payload?.color || data.fill || "#3b82f6" }}
+            />
+            <span>Total: </span>
+            <span className="font-mono font-bold text-slate-100">{data.value}</span>
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-6">
       {/* Control Bar */}
@@ -155,6 +232,35 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Export Buttons */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-950/70 border border-slate-800 rounded-xl shadow-inner">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleExport("csv")}
+              disabled={isExporting !== null}
+              className="h-7 px-2.5 text-xs text-slate-300 hover:text-white hover:bg-slate-800/80 gap-1.5 cursor-pointer"
+              title="Download CSV report"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{isExporting === "csv" ? t("btn_exporting") : t("btn_export_csv")}</span>
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleExport("json")}
+              disabled={isExporting !== null}
+              className="h-7 px-2.5 text-xs text-slate-300 hover:text-white hover:bg-slate-800/80 gap-1.5 cursor-pointer"
+              title="Download JSON report"
+            >
+              <FileCode className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{isExporting === "json" ? t("btn_exporting") : t("btn_export_json")}</span>
+            </Button>
+          </div>
+
+          <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+
           {/* Buton Preia si Analizeaza */}
           <Button
             onClick={handleFetchAndAnalyze}
@@ -280,6 +386,128 @@ export default function DashboardPage() {
             <div className="text-[11px] text-slate-400">
               {t("stats_connections_sub")}
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Interactive Threat Analytics & Distribution Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
+        {/* Chart 1: Vectori de Atac Detectati (Donut) */}
+        <Card className="hover:border-slate-700/80 transition-all">
+          <CardHeader className="pb-1 pt-3.5 px-4">
+            <CardTitle className="text-xs font-semibold flex items-center justify-between text-slate-200">
+              <span className="flex items-center gap-1.5">
+                <PieChartIcon className="w-4 h-4 text-blue-400" />
+                {t("chart_attacks_title")}
+              </span>
+              <Badge variant="outline" className="text-[10px] font-mono">
+                {attackTypeData.length}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="h-60 px-2 pb-2 flex flex-col justify-center items-center">
+            {attackTypeData.length === 0 ? (
+              <div className="text-xs text-slate-500 text-center">{t("chart_no_data")}</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={attackTypeData}
+                    cx="50%"
+                    cy="45%"
+                    innerRadius={45}
+                    outerRadius={75}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {attackTypeData.map((entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomChartTooltip />} isAnimationActive={false} />
+                  <Legend
+                    verticalAlign="bottom"
+                    iconType="circle"
+                    formatter={(value) => <span className="text-[10px] text-slate-300">{value}</span>}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Chart 2: Matrice Severitate Amenintari (Bar Chart) */}
+        <Card className="hover:border-slate-700/80 transition-all">
+          <CardHeader className="pb-1 pt-3.5 px-4">
+            <CardTitle className="text-xs font-semibold flex items-center justify-between text-slate-200">
+              <span className="flex items-center gap-1.5">
+                <BarChart3 className="w-4 h-4 text-rose-400" />
+                {t("chart_severity_title")}
+              </span>
+              <Badge variant="outline" className="text-[10px] font-mono">
+                {stats.total_alerts} Total
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="h-60 px-2 pb-2">
+            {stats.total_alerts === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-500">{t("chart_no_data")}</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={severityData} margin={{ top: 15, right: 15, left: -25, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                  <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} />
+                  <YAxis stroke="#64748b" fontSize={10} allowDecimals={false} tickLine={false} />
+                  <Tooltip content={<CustomChartTooltip />} isAnimationActive={false} cursor={{ fill: "rgba(255, 255, 255, 0.05)" }} />
+                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                    {severityData.map((entry: any, index: number) => (
+                      <Cell key={`bar-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Chart 3: Top Surse Atacatoare (Horizontal Bar Chart) */}
+        <Card className="hover:border-slate-700/80 transition-all">
+          <CardHeader className="pb-1 pt-3.5 px-4">
+            <CardTitle className="text-xs font-semibold flex items-center justify-between text-slate-200">
+              <span className="flex items-center gap-1.5">
+                <Activity className="w-4 h-4 text-emerald-400" />
+                {t("chart_ip_title")}
+              </span>
+              <Badge variant="outline" className="text-[10px] font-mono">
+                Top 5
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="h-60 px-2 pb-2">
+            {topIpsData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-slate-500">{t("chart_no_data")}</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={topIpsData}
+                  layout="vertical"
+                  margin={{ top: 15, right: 20, left: 25, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+                  <XAxis type="number" stroke="#64748b" fontSize={10} allowDecimals={false} tickLine={false} />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    stroke="#94a3b8"
+                    fontSize={10}
+                    tickLine={false}
+                    width={90}
+                  />
+                  <Tooltip content={<CustomChartTooltip />} isAnimationActive={false} cursor={{ fill: "rgba(255, 255, 255, 0.05)" }} />
+                  <Bar dataKey="count" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>

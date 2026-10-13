@@ -45,6 +45,30 @@ def get_alert_stats(db: Session = Depends(get_db)):
     return service.get_stats()
 
 
+@router.get("/export")
+def export_alerts(
+    format: str = Query("csv", pattern="^(csv|json)$"),
+    severity: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Export alerts as CSV or JSON report for incident response and auditing."""
+    from fastapi.responses import Response, JSONResponse
+    service = AlertService(db)
+    if format == "csv":
+        csv_content = service.export_alerts_csv(severity)
+        return Response(
+            content=csv_content,
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=nids_alerts_report.csv"}
+        )
+    else:
+        json_content = service.export_alerts_json(severity)
+        return JSONResponse(
+            content=json_content,
+            headers={"Content-Disposition": "attachment; filename=nids_alerts_report.json"}
+        )
+
+
 @router.patch("/{alert_id}/status", response_model=AlertResponse)
 def update_alert_status(
     alert_id: int,

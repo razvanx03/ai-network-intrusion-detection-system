@@ -103,6 +103,12 @@ class AlertRepository(BaseRepository[Alert]):
             "top_attacking_ips": top_attacking_ips,
         }
 
+    def get_all_for_export(self, severity: Optional[str] = None) -> List[Alert]:
+        stmt = select(Alert).order_by(desc(Alert.timestamp))
+        if severity:
+            stmt = stmt.where(Alert.severity == severity.upper())
+        return list(self.db.scalars(stmt).all())
+
     def delete_all(self) -> int:
         deleted = self.db.execute(delete(Alert)).rowcount
         self.db.commit()

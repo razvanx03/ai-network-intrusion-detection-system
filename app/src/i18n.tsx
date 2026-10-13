@@ -95,6 +95,18 @@ export const translations = {
     not_found_desc: "Ruta pe care ati incercat sa o accesati nu exista in aplicatie.",
     not_found_back_dashboard: "Inapoi la Dashboard",
     not_found_back_login: "Inapoi la Autentificare",
+
+    // Charts & Analytics
+    charts_title: "Analitica & Distributie Amenintari",
+    chart_attacks_title: "Vectori de Atac Detectati",
+    chart_severity_title: "Matrice Severitate Amenintari",
+    chart_ip_title: "Top Surse Atacatoare (IP)",
+    chart_no_data: "Nu exista date de afisat in grafic",
+
+    // Report Export
+    btn_export_csv: "Export CSV",
+    btn_export_json: "Export JSON",
+    btn_exporting: "Se descarca...",
   },
   en: {
     // App & Layout
@@ -186,6 +198,18 @@ export const translations = {
     not_found_desc: "The route you tried to access does not exist in the application.",
     not_found_back_dashboard: "Back to Dashboard",
     not_found_back_login: "Back to Sign In",
+
+    // Charts & Analytics
+    charts_title: "Threat Analytics & Distribution",
+    chart_attacks_title: "Detected Attack Vectors",
+    chart_severity_title: "Threat Severity Matrix",
+    chart_ip_title: "Top Attacking Sources (IP)",
+    chart_no_data: "No data to display in chart",
+
+    // Report Export
+    btn_export_csv: "Export CSV",
+    btn_export_json: "Export JSON",
+    btn_exporting: "Downloading...",
   },
 } as const;
 

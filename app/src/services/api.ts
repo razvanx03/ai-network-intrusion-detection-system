@@ -110,6 +110,26 @@ export const api = {
     });
   },
 
+  async downloadAlertsExport(format: "csv" | "json", severity?: string) {
+    const searchParams = new URLSearchParams({ format });
+    if (severity) searchParams.append("severity", severity);
+    const response = await fetch(`${API_BASE_URL}/alerts/export?${searchParams.toString()}`, {
+      credentials: "include",
+    });
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.statusText}`);
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nids_alerts_report_${new Date().toISOString().slice(0, 10)}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
+
   // Connections
   async getConnections(params: { limit?: number; offset?: number; proto?: string } = {}) {
     const searchParams = new URLSearchParams();
