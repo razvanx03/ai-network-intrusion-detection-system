@@ -1,13 +1,13 @@
 # AI Network Intrusion Detection System (NIDS)
 
-An AI-powered Network Intrusion Detection System (NIDS) that analyzes Zeek network flow metadata (`conn.log`, `dns.log`, `http.log`, `ssl.log`) to detect cyber threats, port scans, brute-force attacks, denial-of-service floods, and behavioral anomalies across encrypted and unencrypted network traffic.
+An AI Network Intrusion Detection System (NIDS) platform prepared to analyze Zeek network flow metadata (`conn.log`) with a demonstration detector for port scans, repeated SSH connections, traffic bursts, and statistical anomalies. The current detector uses a synthetic baseline; its results are illustrative, not validated threat classifications. Other Zeek log types are not implemented.
 
 ---
 
 ## Features
 
-- **Hybrid AI Detection Engine**: Combines behavioral heuristic analysis with unsupervised anomaly detection (`IsolationForest` via `scikit-learn`) over extracted flow feature vectors.
-- **MITRE ATT&CK Mapping**: Automatically classifies detected threats with MITRE ATT&CK technique identifiers (`T1046` Network Service Scanning, `T1110` Brute Force, `T1498` Network Denial of Service, `T1071` Application Layer Protocol Anomaly) and severity levels (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
+- **Demonstration AI Detection Engine**: Combines behavioral heuristic analysis with unsupervised anomaly detection (`IsolationForest` via `scikit-learn`) over extracted flow feature vectors.
+- **Demonstration MITRE ATT&CK Mapping**: Labels demonstration alerts with MITRE ATT&CK technique identifiers (`T1046` Network Service Scanning, `T1110` Brute Force, `T1498` Network Denial of Service, `T1071` Application Layer Protocol Anomaly) and severity levels (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
 - **Zeek Metadata Analysis**: Inspects session-level telemetry (duration, packet ratios, byte counts, TCP connection states such as `S0`, `REJ`, `SF`) without requiring deep packet payload decryption.
 - **Live Operations Console**: Real-time web dashboard to fetch & analyze Zeek logs from a remote sensor agent (or local simulation generator), filter alerts by severity, inspect raw network connections by protocol (`TCP`, `UDP`, `ICMP`), and manage sensor/database state.
 - **Secure Authentication**: Single-admin authentication backed by `bcrypt` password hashing and `HttpOnly` JWT cookies with strict CORS protection.
@@ -116,9 +116,22 @@ npm run dev
 
 ## Usage
 
-1. Sign in at `http://localhost:5173/login` using the administrator credentials configured in `.env` (default: `admin` / `admin123`).
+1. Sign in at `http://localhost:5173/login` using the administrator credentials configured in `.env`. The login form does not prefill credentials.
 2. On the **Live Dashboard** (`/dashboard`):
    - Click **Fetch & Analyze Logs** to pull the latest Zeek connection flows from the sensor, run the AI detection pipeline, store flows and alerts in the database, and update the dashboard metrics in real time.
    - Filter security alerts by severity (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) and mark investigated alerts as resolved.
-   - Use **Clear VM Logs** to reset the remote sensor log buffer or **Reset DB** to clear all stored connections and alerts.
+   - Use **Reset sensor cursor** to restart reading existing sensor logs (the log file is not deleted) or **Reset DB** to clear all stored connections and alerts.
 3. Navigate to **Zeek Flows** (`/connections`) to inspect raw network sessions, connection states (`SF`, `S0`, `REJ`), durations, byte counts, and packet ratios filtered by protocol (`TCP`, `UDP`, `ICMP`).
+## Platform boundaries
+
+- All alert, connection and system endpoints require an active administrator session. Login returns user and session metadata; the JWT is transmitted only in an HttpOnly cookie.
+- Set secure-cookie options appropriately for deployment over HTTPS. Local HTTP development must use an explicit compatible configuration.
+- The dashboard supports paginated alerts and connections, visible request errors, and Romanian/English themes and labels. Alert exports include all records matching the selected severity, not just the visible page.
+- `api/app/ai/engine.py` defines the analysis interface. The existing demonstration engine is its current implementation; replace it when the real AI is ready.
+- The VM collector uses durable batches acknowledged after database commit. Retries analyze only new connection UIDs. Retained JSON/TSV conn.log files and gzip archives are supported; unread archives must not be deleted before ingestion. Deploy the updated backend and sensor together. See [sensor setup and recovery](sensor_agent/README.md).
+- Sensor mode describes configuration, not a live VM connectivity probe.
+- Source files under `app/src/lib/` must be included when committing the frontend. Python environment directories remain ignored.
+
+## Verification
+
+Run `npm run build` and `npm run lint` from `app/`. Validate login/logout, expired sessions, protected API requests, pagination, error recovery, exports, theme/language persistence and mobile navigation manually. No automated test suite is included.

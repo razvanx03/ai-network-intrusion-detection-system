@@ -32,7 +32,7 @@ class ConnectionRepository(BaseRepository[Connection]):
 
         if new_objs:
             self.db.add_all(new_objs)
-            self.db.commit()
+            self.db.flush()
             for obj in new_objs:
                 self.db.refresh(obj)
 
@@ -64,7 +64,7 @@ class ConnectionRepository(BaseRepository[Connection]):
             count_stmt = count_stmt.where(Connection.conn_state == conn_state)
 
         total = self.db.scalar(count_stmt) or 0
-        stmt = stmt.order_by(desc(Connection.ts)).offset(offset).limit(limit)
+        stmt = stmt.order_by(desc(Connection.ts), desc(Connection.id)).offset(offset).limit(limit)
         results = list(self.db.scalars(stmt).all())
         return results, total
 

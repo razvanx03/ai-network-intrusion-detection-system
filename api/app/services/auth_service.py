@@ -15,7 +15,7 @@ class AuthService:
 
     def authenticate_user(self, login_data: LoginRequest) -> Optional[TokenResponse]:
         user = self.user_repo.get_by_username(login_data.username)
-        if not user:
+        if not user or not user.is_active or not user.is_admin:
             return None
         
         if not verify_password(login_data.password, user.hashed_password):

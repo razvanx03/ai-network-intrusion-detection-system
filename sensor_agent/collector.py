@@ -1,203 +1,219 @@
-import os
+"""On-demand Zeek reader with durable, acknowledged batches."""
+import gzip
+import hashlib
+import hmac
 import json
-import logging
+import os
+import sqlite3
+import uuid
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, Header, HTTPException, status
+
 import uvicorn
-from dotenv import load_dotenv
+from dotenv import dotenv_values
+from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel
 
-# Load environment configuration
-load_dotenv()
 
-AGENT_HOST = os.getenv("AGENT_HOST", "0.0.0.0")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "8000"))
-API_KEY = os.getenv("API_KEY", "nids-sensor-agent-secret-key")
+@dataclass(frozen=True)
+class Config:
+    host: str
+    port: int
+    api_key: str
+    log_dir: Path
+    state_file: Path
+    batch_size: int
 
-# Potential default Zeek log locations
-DEFAULT_LOG_PATHS = [
-    "/opt/zeek/logs/current/conn.log",
-    "/var/log/zeek/current/conn.log",
-    "/usr/local/zeek/logs/current/conn.log",
-    "./conn.log"
-]
+    @classmethod
+    def load(cls):
+        env_file = Path(__file__).with_name(".env")
+        if not env_file.is_file():
+            raise RuntimeError(f"Missing sensor configuration: {env_file}")
+        values = {**dotenv_values(env_file), **os.environ}
+        names = ("AGENT_HOST", "AGENT_PORT", "API_KEY", "ZEEK_LOG_DIR", "STATE_FILE", "BATCH_SIZE")
+        for name in names:
+            if not values.get(name):
+                raise RuntimeError(f"Missing sensor configuration: {name}")
+        config = cls(values["AGENT_HOST"], int(values["AGENT_PORT"]), values["API_KEY"],
+                     Path(values["ZEEK_LOG_DIR"]), Path(values["STATE_FILE"]), int(values["BATCH_SIZE"]))
+        if len(config.api_key) < 32 or config.api_key == "nids-sensor-agent-secret-key":
+            raise RuntimeError("API_KEY must be a randomly generated secret of at least 32 characters")
+        if not 1 <= config.port <= 65535 or not 1 <= config.batch_size <= 1000:
+            raise RuntimeError("Invalid AGENT_PORT or BATCH_SIZE (allowed: 1..1000)")
+        if not config.log_dir.is_absolute() or not config.state_file.is_absolute():
+            raise RuntimeError("ZEEK_LOG_DIR and STATE_FILE must be absolute paths")
+        return config
 
-CONFIGURED_PATH = os.getenv("ZEEK_LOG_PATH", "")
-if CONFIGURED_PATH:
-    ZEEK_LOG_PATH = Path(CONFIGURED_PATH)
-else:
-    # Auto-detect first existing location or default to /opt/zeek/logs/current/conn.log
-    detected = next((Path(p) for p in DEFAULT_LOG_PATHS if Path(p).exists()), Path("/opt/zeek/logs/current/conn.log"))
-    ZEEK_LOG_PATH = detected
 
-OFFSET_FILE = Path("/tmp/nids_sensor_agent_offset.dat")
+MAX_LINE_BYTES = 1024 * 1024
+MAX_BATCH_BYTES = 4 * 1024 * 1024
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger("nids.sensor_collector")
 
-app = FastAPI(
-    title="NIDS Zeek Sensor Collector",
-    description="Lightweight edge telemetry daemon for reading and streaming Zeek connection logs.",
-    version="1.0.0"
-)
+class Acknowledgement(BaseModel):
+    batch_id: str
 
-# In-memory offset tracker
-file_offset: int = 0
 
-def load_saved_offset() -> int:
-    global file_offset
-    if OFFSET_FILE.exists():
+class Reader:
+    def __init__(self, config: Config):
+        self.config = config
+        if not config.log_dir.is_dir():
+            raise RuntimeError(f"Zeek log directory missing: {config.log_dir}")
+        config.state_file.parent.mkdir(parents=True, exist_ok=True)
+        with self.database() as db:
+            db.execute("CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)")
+            db.execute("INSERT OR IGNORE INTO state VALUES (1, ?)",
+                       (json.dumps({"cursors": {}, "pending": None, "last_ack": None}),))
+            self.load(db)
+
+    @contextmanager
+    def database(self):
+        db = sqlite3.connect(self.config.state_file, timeout=30)
         try:
-            val = int(OFFSET_FILE.read_text().strip())
-            file_offset = max(0, val)
+            db.execute("PRAGMA synchronous=FULL")
+            db.execute("BEGIN IMMEDIATE")
+            yield db
+            db.commit()
         except Exception:
-            file_offset = 0
-    return file_offset
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
-def save_offset(offset: int) -> None:
-    global file_offset
-    file_offset = offset
-    try:
-        OFFSET_FILE.write_text(str(offset))
-    except Exception as e:
-        logger.warning(f"Could not persist offset file: {e}")
+    @staticmethod
+    def load(db):
+        state = json.loads(db.execute("SELECT data FROM state WHERE id=1").fetchone()[0])
+        if not isinstance(state.get("cursors"), dict):
+            raise RuntimeError("Invalid sensor cursor state; restore the state database")
+        return state
 
-load_saved_offset()
+    @staticmethod
+    def save(db, state):
+        db.execute("UPDATE state SET data=? WHERE id=1", (json.dumps(state),))
 
-def verify_api_key(x_api_key: Optional[str] = Header(None)) -> None:
-    if not x_api_key or x_api_key != API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing X-API-Key header."
-        )
+    @staticmethod
+    def line(stream):
+        line = stream.readline(MAX_LINE_BYTES + 1)
+        if len(line) > MAX_LINE_BYTES:
+            raise RuntimeError("Zeek record exceeds the 1 MiB line limit")
+        return line
 
-def parse_zeek_line(line: str, headers: Optional[List[str]]) -> Optional[Dict[str, Any]]:
-    """Parse a single line from conn.log supporting both JSON format and TSV format."""
-    clean = line.strip()
-    if not clean or clean.startswith("#"):
-        return None
+    def batch(self):
+        with self.database() as db:
+            state = self.load(db)
+            if state["pending"]:
+                return state["pending"]["payload"]
+            # Current/ may be a symlink. Include it explicitly and deduplicate paths.
+            paths = set(self.config.log_dir.rglob("conn*.log*"))
+            paths.update((self.config.log_dir / "current").glob("conn*.log*"))
+            paths = {p.resolve() for p in paths if p.is_file() and (p.name.endswith(".log") or p.name.endswith(".log.gz"))}
+            if not paths:
+                raise RuntimeError("No Zeek conn.log files found; check Zeek and ZEEK_LOG_DIR")
+            cursors = dict(state["cursors"])
+            records, seen, size = [], set(), 0
+            for path in sorted(paths, key=lambda p: (p.stat().st_mtime_ns, str(p))):
+                opener = gzip.open if path.suffix == ".gz" else open
+                with opener(path, "rb") as stream:
+                    headers = []
+                    # The first complete data record identifies the stream across rename/compression.
+                    while True:
+                        first = self.line(stream)
+                        if not first or not first.endswith(b"\n"):
+                            break
+                        if first.startswith(b"#fields\t"):
+                            headers = first.decode("utf-8").rstrip("\r\n").split("\t")[1:]
+                        if first.strip() and not first.startswith(b"#"):
+                            break
+                    if not first or not first.endswith(b"\n") or first.startswith(b"#"):
+                        continue
+                    identity = hashlib.sha256(first).hexdigest()
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    offset = cursors.get(identity, 0)
+                    stream.seek(0, 2)
+                    if stream.tell() < offset:
+                        raise RuntimeError(f"Zeek file truncated after ingestion: {path}")
+                    stream.seek(offset)
+                    while len(records) < self.config.batch_size and size < MAX_BATCH_BYTES:
+                        start = stream.tell()
+                        line = self.line(stream)
+                        if not line or not line.endswith(b"\n"):
+                            break  # An unfinished final record is retried on the next request.
+                        text = line.decode("utf-8").rstrip("\r\n")
+                        if text.startswith("#fields\t"):
+                            headers = text.split("\t")[1:]
+                        elif text and not text.startswith("#"):
+                            if text.startswith("{"):
+                                record = json.loads(text)
+                                if not isinstance(record, dict):
+                                    raise ValueError("Expected a JSON object")
+                            else:
+                                columns = text.split("\t")
+                                if not headers or len(columns) != len(headers):
+                                    raise ValueError(f"Malformed Zeek TSV record at {path}:{start}")
+                                record = dict(zip(headers, columns))
+                            records.append(record)
+                            size += len(line)
+                        cursors[identity] = stream.tell()
+                    if len(records) >= self.config.batch_size or size >= MAX_BATCH_BYTES:
+                        break
+            payload = {"batch_id": str(uuid.uuid4()), "records": records}
+            state["pending"] = {"payload": payload, "cursors": cursors}
+            self.save(db, state)
+            return payload
 
-    # 1. Attempt JSON parsing
-    if clean.startswith("{") and clean.endswith("}"):
-        try:
-            return json.loads(clean)
-        except json.JSONDecodeError:
-            pass
+    def acknowledge(self, batch_id):
+        with self.database() as db:
+            state = self.load(db)
+            if state["last_ack"] == batch_id:
+                return
+            pending = state["pending"]
+            if not pending or pending["payload"]["batch_id"] != batch_id:
+                raise HTTPException(409, "Unknown or superseded batch")
+            state.update(cursors=pending["cursors"], pending=None, last_ack=batch_id)
+            self.save(db, state)
 
-    # 2. Attempt TSV (Tab-Separated Values) format with known headers
-    if headers and "\t" in clean:
-        parts = clean.split("\t")
-        if len(parts) == len(headers):
-            record: Dict[str, Any] = {}
-            for k, v in zip(headers, parts):
-                if v == "-":
-                    record[k] = None
-                else:
-                    record[k] = v
-            return record
+    def reset(self):
+        with self.database() as db:
+            state = self.load(db)
+            if state["pending"]:
+                raise HTTPException(409, "A batch is awaiting acknowledgement; finish ingestion before resetting")
+            self.save(db, {"cursors": {}, "pending": None, "last_ack": None})
 
-    return None
 
-def extract_tsv_headers(filepath: Path) -> List[str]:
-    """Extract column header names from TSV format Zeek conn.log."""
-    if not filepath.exists():
-        return []
-    try:
-        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-            for _ in range(25):
-                line = f.readline()
-                if not line:
-                    break
-                if line.startswith("#fields"):
-                    parts = line.strip().split("\t")
-                    # Header line is: #fields <col1> <col2> ...
-                    if len(parts) > 1:
-                        return parts[1:]
-                    # Space separated fallback
-                    space_parts = line.strip().split()
-                    if len(space_parts) > 1:
-                        return space_parts[1:]
-    except Exception as e:
-        logger.warning(f"Error reading TSV headers: {e}")
-    return []
+def create_app(config: Config | None = None):
+    config = config or Config.load()
+    reader = Reader(config)
+    app = FastAPI(title="AI NIDS Sensor Agent", docs_url=None, redoc_url=None)
 
-@app.get("/")
-def root():
-    return {
-        "service": "NIDS Zeek Sensor Agent",
-        "status": "online",
-        "zeek_log_path": str(ZEEK_LOG_PATH),
-        "log_exists": ZEEK_LOG_PATH.exists()
-    }
+    def authenticate(x_api_key: str | None = Header(default=None)):
+        if x_api_key is None or not hmac.compare_digest(x_api_key.encode(), config.api_key.encode()):
+            raise HTTPException(401, "Invalid sensor API key")
 
-@app.get("/health")
-def health():
-    size = ZEEK_LOG_PATH.stat().st_size if ZEEK_LOG_PATH.exists() else 0
-    return {
-        "status": "online",
-        "zeek_log_path": str(ZEEK_LOG_PATH),
-        "file_exists": ZEEK_LOG_PATH.exists(),
-        "file_size_bytes": size,
-        "current_offset": file_offset
-    }
+    @app.get("/health", dependencies=[Depends(authenticate)])
+    def health():
+        with reader.database() as db:
+            state = reader.load(db)
+        return {"status": "online", "pending_batch": state["pending"] is not None}
 
-@app.get("/logs")
-def get_logs(x_api_key: Optional[str] = Header(None)):
-    """
-    Fetch all newly appended Zeek connection records since last read offset.
-    Updates the read pointer so records are ingested incrementally.
-    """
-    verify_api_key(x_api_key)
+    @app.get("/logs", dependencies=[Depends(authenticate)])
+    def logs():
+        return reader.batch()
 
-    if not ZEEK_LOG_PATH.exists():
-        logger.warning(f"Zeek log file not found at: {ZEEK_LOG_PATH}")
-        return []
+    @app.post("/logs/ack", dependencies=[Depends(authenticate)])
+    def acknowledge(body: Acknowledgement):
+        reader.acknowledge(body.batch_id)
+        return {"status": "acknowledged"}
 
-    tsv_headers = extract_tsv_headers(ZEEK_LOG_PATH)
-    logs: List[Dict[str, Any]] = []
+    @app.delete("/logs", dependencies=[Depends(authenticate)])
+    def reset():
+        reader.reset()
+        return {"status": "cursor_reset"}
 
-    try:
-        with open(ZEEK_LOG_PATH, "r", encoding="utf-8", errors="ignore") as f:
-            # If file was rotated/truncated, reset offset to beginning
-            f.seek(0, os.SEEK_END)
-            current_size = f.tell()
+    return app
 
-            global file_offset
-            if file_offset > current_size:
-                logger.info("Log file truncation/rotation detected. Resetting offset to 0.")
-                file_offset = 0
-
-            f.seek(file_offset)
-
-            for line in f:
-                parsed = parse_zeek_line(line, tsv_headers)
-                if parsed:
-                    logs.append(parsed)
-
-            new_offset = f.tell()
-            save_offset(new_offset)
-
-        logger.info(f"Read {len(logs)} new Zeek records. Offset updated: {file_offset} -> {new_offset}")
-        return logs
-
-    except Exception as e:
-        logger.error(f"Error reading Zeek log file: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to read sensor logs: {str(e)}"
-        )
-
-@app.delete("/logs")
-def reset_logs(x_api_key: Optional[str] = Header(None)):
-    """Reset the log read pointer to 0 and optionally truncate log buffer."""
-    verify_api_key(x_api_key)
-    save_offset(0)
-    logger.info("Reset sensor offset to 0.")
-    return {"status": "success", "message": "Sensor log read cursor reset to 0."}
 
 if __name__ == "__main__":
-    logger.info(f"Starting Sensor Collector on {AGENT_HOST}:{AGENT_PORT} watching '{ZEEK_LOG_PATH}'...")
-    uvicorn.run(app, host=AGENT_HOST, port=AGENT_PORT)
+    configuration = Config.load()
+    uvicorn.run(create_app(configuration), host=configuration.host, port=configuration.port)

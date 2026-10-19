@@ -5,7 +5,7 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto rounded-lg border border-slate-800 shadow-sm">
+  <div className="relative w-full overflow-auto rounded-lg border border-border shadow-sm">
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
@@ -22,8 +22,8 @@ const TableHeader = React.forwardRef<
   <thead
     ref={ref}
     className={cn(
-      "bg-slate-800/60 border-b-2 border-slate-700/80 sticky top-0 z-10",
-      className
+      "bg-muted/60 border-b-2 border-border/80 sticky top-0 z-10",
+      className,
     )}
     {...props}
   />
@@ -36,7 +36,10 @@ const TableBody = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <tbody
     ref={ref}
-    className={cn("[&_tr:last-child]:border-0 divide-y divide-slate-800/40", className)}
+    className={cn(
+      "[&_tr:last-child]:border-0 divide-y divide-border/40",
+      className,
+    )}
     {...props}
   />
 ));
@@ -49,8 +52,8 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "border-b border-slate-800/60 transition-colors hover:bg-slate-800/40 data-[state=selected]:bg-slate-800",
-      className
+      "border-b border-border/60 transition-colors hover:bg-muted/40 data-[state=selected]:bg-muted",
+      className,
     )}
     {...props}
   />
@@ -64,8 +67,8 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-11 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider text-blue-400 bg-slate-800/40 select-none [&:has([role=checkbox])]:pr-0",
-      className
+      "h-11 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider text-primary bg-muted/40 select-none [&:has([role=checkbox])]:pr-0",
+      className,
     )}
     {...props}
   />
@@ -78,17 +81,13 @@ const TableCell = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <td
     ref={ref}
-    className={cn("p-4 align-middle text-slate-200 [&:has([role=checkbox])]:pr-0", className)}
+    className={cn(
+      "p-4 align-middle text-foreground [&:has([role=checkbox])]:pr-0",
+      className,
+    )}
     {...props}
   />
 ));
 TableCell.displayName = "TableCell";
 
-export {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-};
+export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell };

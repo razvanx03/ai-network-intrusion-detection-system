@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+/* oxlint-disable react/only-export-components -- Project policy keeps translations and their reactive provider in this single module. */
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import { STORAGE_KEYS } from "@/constants";
 
 export type Language = "ro" | "en";
@@ -6,12 +13,54 @@ export type Theme = "dark" | "light";
 
 export const translations = {
   ro: {
+    loading: "Se incarca...",
+    retry: "Reincearca",
+    stale_data: "Sunt afisate datele de la ultima actualizare reusita.",
+    network_error:
+      "Serverul nu este disponibil. Verificati conexiunea si reincercati.",
+    operation_error: "Operatia nu a reusit. Reincercati.",
+    session_expired:
+      "Sesiunea a expirat sau accesul a fost revocat. Autentificati-va din nou.",
+    logout_error:
+      "Deconectarea nu a reusit. Sesiunea poate fi inca activa. Reincercati.",
+    sensor_reset_done:
+      "Cursorul senzorului a fost resetat. Logurile existente pot fi recitite.",
+    clear_db_done: "Au fost sterse {conns} conexiuni si {alerts} alerte.",
+    alert_resolved: "Alerta a fost rezolvata.",
+    cancel: "Anuleaza",
+    clear_title: "Sterge datele locale?",
+    close: "Inchide",
+    previous: "Inapoi",
+    next: "Inainte",
+    pagination: "{start}-{end} din {total}",
+    navigation: "Navigatie principala",
+    demo_detector: "Detector demonstrativ",
+    severity_CRITICAL: "Critica",
+    severity_HIGH: "Ridicata",
+    severity_MEDIUM: "Medie",
+    severity_LOW: "Scazuta",
+    status_NEW: "Noua",
+    status_ACKNOWLEDGED: "Confirmata",
+    status_RESOLVED: "Rezolvata",
+    status_FALSE_POSITIVE: "Fals pozitiv",
+    proto_tcp: "TCP",
+    proto_udp: "UDP",
+    proto_icmp: "ICMP",
+    state_SF: "SF (Normal)",
+    state_S0: "S0 (Fara SYN-ACK)",
+    state_REJ: "REJ (Respins)",
+    attack_ssh: "Tentative repetate SSH",
+    attack_scan: "Scanare de porturi",
+    attack_dos: "DoS / SYN Flood",
+    attack_anomaly: "Anomalie statistica",
+    chart_total: "Total",
+    username_placeholder: "Nume utilizator",
+
     // App & Layout
     app_title: "AI NIDS Portal",
     hub_title: "AI NIDS",
     nav_dashboard: "Live Dashboard",
     nav_connections: "Zeek Flows",
-    sensor_label: "Senzor",
     sensor_mock: "Simulare (Mod Mock)",
     sensor_remote: "Agent VM la Distanta",
     sensor_offline: "Deconectat",
@@ -37,17 +86,15 @@ export const translations = {
     // Dashboard Console
     console_title: "Consola & Comenzi Operative",
     btn_fetch_analyze: "Preia & Analizeaza Loguri",
-    btn_analyzing: "AI Analizeaza fluxurile...",
-    btn_reset_sensor: "Curata Loguri de pe VM",
-    btn_resetting_sensor: "Resetare VM...",
+    btn_analyzing: "Se analizeaza fluxurile...",
+    btn_reset_sensor: "Reseteaza cursorul senzorului",
+    btn_resetting_sensor: "Resetare cursor...",
     btn_reset_db: "Reset DB",
     btn_clearing_db: "Stergere...",
-    confirm_clear_db: "Sigur doriti sa stergeti toate alertele si conexiunile din baza de date pentru un test curat?",
-    analysis_done: "Analiza finalizata: {conns} conexiuni noi, {alerts} alerte detectate.",
-    analysis_error: "Eroare la preluarea logurilor: {error}",
-    sensor_reset_msg: "Senzor VM: {msg}",
-    sensor_reset_error: "Eroare resetare senzor: {error}",
-    clear_db_error: "Eroare curatare date: {error}",
+    confirm_clear_db:
+      "Sigur doriti sa stergeti toate alertele si conexiunile din baza de date pentru un test curat?",
+    analysis_done:
+      "Analiza finalizata: {conns} conexiuni noi, {alerts} alerte detectate.",
 
     // Dashboard Stats Cards
     stats_total_alerts: "Total Alerte",
@@ -71,33 +118,30 @@ export const translations = {
     th_status: "Status",
     th_action: "Actiune",
     btn_resolve: "Rezolva",
-    no_alerts: "Nu exista alerte active pentru filtrul curent.",
-    no_alerts_hint: "Apasati pe butonul „Preia & Analizeaza Loguri” pentru a declansa ingestia de teste.",
+    no_alerts: "Nu exista alerte pentru filtrul curent.",
 
     // Connections Page
     conn_title: "Fluxuri de Retea Zeek (conn.log)",
     filter_all_protos: "Toate Protocoalele",
     btn_refresh: "Reimprospateaza",
-    btn_refreshing: "Se incarca...",
     conn_history_title: "Istoric Sesiuni Inregistrate",
-    conn_total: "Total inregistrari",
     no_connections: "Nu exista conexiuni inregistrate in baza de date.",
     th_uid: "UID",
     th_protocol: "Protocol",
     th_service: "Serviciu",
     th_conn_state: "Stare Conexiune",
-    th_duration: "Durata",
+    th_duration: "Durata (s)",
     th_bytes: "Bytes (Orig / Resp)",
     th_packets: "Pachete",
 
     // 404 Not Found Page
     not_found_title: "Pagina nu a fost gasita",
-    not_found_desc: "Ruta pe care ati incercat sa o accesati nu exista in aplicatie.",
+    not_found_desc:
+      "Ruta pe care ati incercat sa o accesati nu exista in aplicatie.",
     not_found_back_dashboard: "Inapoi la Dashboard",
     not_found_back_login: "Inapoi la Autentificare",
 
     // Charts & Analytics
-    charts_title: "Analitica & Distributie Amenintari",
     chart_attacks_title: "Vectori de Atac Detectati",
     chart_severity_title: "Matrice Severitate Amenintari",
     chart_ip_title: "Top Surse Atacatoare (IP)",
@@ -109,12 +153,52 @@ export const translations = {
     btn_exporting: "Se descarca...",
   },
   en: {
+    loading: "Loading...",
+    retry: "Retry",
+    stale_data: "Showing data from the last successful update.",
+    network_error: "Server unavailable. Check your connection and retry.",
+    operation_error: "The operation failed. Please retry.",
+    session_expired:
+      "Your session expired or access was revoked. Sign in again.",
+    logout_error:
+      "Sign out failed. Your session may still be active. Please retry.",
+    sensor_reset_done: "Sensor cursor reset. Existing logs can be read again.",
+    clear_db_done: "Deleted {conns} connections and {alerts} alerts.",
+    alert_resolved: "Alert resolved.",
+    cancel: "Cancel",
+    clear_title: "Delete local data?",
+    close: "Close",
+    previous: "Previous",
+    next: "Next",
+    pagination: "{start}-{end} of {total}",
+    navigation: "Main navigation",
+    demo_detector: "Demonstration detector",
+    severity_CRITICAL: "Critical",
+    severity_HIGH: "High",
+    severity_MEDIUM: "Medium",
+    severity_LOW: "Low",
+    status_NEW: "New",
+    status_ACKNOWLEDGED: "Acknowledged",
+    status_RESOLVED: "Resolved",
+    status_FALSE_POSITIVE: "False positive",
+    proto_tcp: "TCP",
+    proto_udp: "UDP",
+    proto_icmp: "ICMP",
+    state_SF: "SF (Normal)",
+    state_S0: "S0 (No SYN-ACK)",
+    state_REJ: "REJ (Rejected)",
+    attack_ssh: "Repeated SSH attempts",
+    attack_scan: "Port scan",
+    attack_dos: "DoS / SYN Flood",
+    attack_anomaly: "Statistical anomaly",
+    chart_total: "Total",
+    username_placeholder: "Username",
+
     // App & Layout
     app_title: "AI NIDS Portal",
     hub_title: "AI NIDS",
     nav_dashboard: "Live Dashboard",
     nav_connections: "Zeek Flows",
-    sensor_label: "Sensor",
     sensor_mock: "Simulation (Mock Mode)",
     sensor_remote: "Remote VM Agent",
     sensor_offline: "Offline",
@@ -140,17 +224,15 @@ export const translations = {
     // Dashboard Console
     console_title: "Console & Operational Commands",
     btn_fetch_analyze: "Fetch & Analyze Logs",
-    btn_analyzing: "AI Analyzing flows...",
-    btn_reset_sensor: "Clear VM Sensor Logs",
-    btn_resetting_sensor: "Resetting VM...",
+    btn_analyzing: "Analyzing flows...",
+    btn_reset_sensor: "Reset sensor cursor",
+    btn_resetting_sensor: "Resetting cursor...",
     btn_reset_db: "Reset DB",
     btn_clearing_db: "Clearing...",
-    confirm_clear_db: "Are you sure you want to delete all alerts and connections from the database for a clean test?",
-    analysis_done: "Analysis completed: {conns} new connections, {alerts} alerts detected.",
-    analysis_error: "Error fetching logs: {error}",
-    sensor_reset_msg: "VM Sensor: {msg}",
-    sensor_reset_error: "Error resetting sensor: {error}",
-    clear_db_error: "Error clearing database: {error}",
+    confirm_clear_db:
+      "Are you sure you want to delete all alerts and connections from the database for a clean test?",
+    analysis_done:
+      "Analysis completed: {conns} new connections, {alerts} alerts detected.",
 
     // Dashboard Stats Cards
     stats_total_alerts: "Total Alerts",
@@ -174,33 +256,30 @@ export const translations = {
     th_status: "Status",
     th_action: "Action",
     btn_resolve: "Resolve",
-    no_alerts: "No active alerts matching the current filter.",
-    no_alerts_hint: "Click 'Fetch & Analyze Logs' to trigger test data ingestion.",
+    no_alerts: "No alerts matching the current filter.",
 
     // Connections Page
     conn_title: "Zeek Network Flows (conn.log)",
     filter_all_protos: "All Protocols",
     btn_refresh: "Refresh",
-    btn_refreshing: "Loading...",
     conn_history_title: "Recorded Session History",
-    conn_total: "Total records",
     no_connections: "No connections recorded in the database.",
     th_uid: "UID",
     th_protocol: "Protocol",
     th_service: "Service",
     th_conn_state: "Conn State",
-    th_duration: "Duration",
+    th_duration: "Duration (s)",
     th_bytes: "Bytes (Orig / Resp)",
     th_packets: "Packets",
 
     // 404 Not Found Page
     not_found_title: "Page Not Found",
-    not_found_desc: "The route you tried to access does not exist in the application.",
+    not_found_desc:
+      "The route you tried to access does not exist in the application.",
     not_found_back_dashboard: "Back to Dashboard",
     not_found_back_login: "Back to Sign In",
 
     // Charts & Analytics
-    charts_title: "Threat Analytics & Distribution",
     chart_attacks_title: "Detected Attack Vectors",
     chart_severity_title: "Threat Severity Matrix",
     chart_ip_title: "Top Attacking Sources (IP)",
@@ -225,9 +304,13 @@ interface I18nContextType {
 
 const I18nContext = createContext<I18nContextType | null>(null);
 
-export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.LANGUAGE) as Language | null;
+    const saved = localStorage.getItem(
+      STORAGE_KEYS.LANGUAGE,
+    ) as Language | null;
     return saved === "en" || saved === "ro" ? saved : "ro";
   });
 
@@ -246,6 +329,10 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem(STORAGE_KEYS.THEME, newTheme);
   };
 
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
+
   // Sync theme with HTML root document class
   useEffect(() => {
     const root = document.documentElement;
@@ -260,16 +347,22 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [theme]);
 
-  const t = (key: TranslationKey, params?: Record<string, string | number>): string => {
-    const langDict = translations[language] || translations.ro;
-    let text: string = langDict[key] || translations.ro[key] || key;
-    if (params) {
-      Object.entries(params).forEach(([paramKey, val]) => {
-        text = text.replace(new RegExp(`\\{${paramKey}\\}`, "g"), String(val));
-      });
-    }
-    return text;
-  };
+  const t = useCallback(
+    (key: TranslationKey, params?: Record<string, string | number>): string => {
+      const langDict = translations[language] || translations.ro;
+      let text: string = langDict[key] || translations.ro[key] || key;
+      if (params) {
+        Object.entries(params).forEach(([paramKey, val]) => {
+          text = text.replace(
+            new RegExp(`\\{${paramKey}\\}`, "g"),
+            String(val),
+          );
+        });
+      }
+      return text;
+    },
+    [language],
+  );
 
   return (
     <I18nContext.Provider value={{ language, setLanguage, theme, setTheme, t }}>

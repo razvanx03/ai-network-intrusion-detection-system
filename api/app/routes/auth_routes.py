@@ -5,13 +5,13 @@ from app.core.constants import AUTH_ROUTE_PREFIX, COOKIE_ACCESS_TOKEN_KEY
 from app.database.session import get_db
 from app.models.user import User
 from app.routes.deps import get_current_user
-from app.schemas.user import LoginRequest, TokenResponse, UserResponse
+from app.schemas.user import LoginRequest, SessionResponse, UserResponse
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix=AUTH_ROUTE_PREFIX, tags=["Authentication"])
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=SessionResponse)
 def login(login_data: LoginRequest, response: Response, db: Session = Depends(get_db)):
     """Authenticate admin user and set JWT in HttpOnly secure cookie."""
     auth_service = AuthService(db)
@@ -34,7 +34,7 @@ def login(login_data: LoginRequest, response: Response, db: Session = Depends(ge
         path="/",
     )
 
-    return token_response
+    return SessionResponse(expires_in_minutes=token_response.expires_in_minutes, user=token_response.user)
 
 
 @router.post("/logout")

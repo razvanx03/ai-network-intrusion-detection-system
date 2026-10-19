@@ -1,63 +1,72 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { api } from "@/services/api";
-
-export interface User {
-  id: number;
-  username: string;
-  is_active: boolean;
-  is_admin: boolean;
-  created_at: string;
-}
-
-interface AuthContextType {
-  user: User | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType | null>(null);
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+import { AuthContext } from "./auth-context";
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  type ReactNode,
+} from "react";
+import { api, ApiError, onSessionInvalid } from "@/services/api";
+import type { User } from "@/services/types";
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-
+  const [isLoading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const pending = useRef<AbortController | null>(null);
   const refreshUser = useCallback(async () => {
+    pending.current?.abort();
+    const controller = new AbortController();
+    pending.current = controller;
+    setLoading(true);
+    setError(false);
     try {
-      const currentUser = await api.getMe();
-      setUser(currentUser);
-    } catch {
-      setUser(null);
+      const current = await api.getMe(controller.signal);
+      if (!controller.signal.aborted) setUser(current);
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403))
+        setUser(null);
+      else setError(true);
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
-
   useEffect(() => {
-    refreshUser();
+    // Check the server-owned session when the provider mounts.
+    // oxlint-disable-next-line react/set-state-in-effect
+    void refreshUser();
+    return () => pending.current?.abort();
   }, [refreshUser]);
-
+  useEffect(
+    () =>
+      onSessionInvalid(() => {
+        if (user) setSessionExpired(true);
+        setUser(null);
+      }),
+    [user],
+  );
   const login = async (username: string, password: string) => {
-    const res = await api.login(username, password);
-    setUser(res.user);
+    pending.current?.abort();
+    const result = await api.login(username, password);
+    setUser(result.user);
+    setError(false);
+    setLoading(false);
+    setSessionExpired(false);
   };
-
   const logout = async () => {
-    try {
-      await api.logout();
-    } finally {
-      setUser(null);
-    }
+    await api.logout();
+    setUser(null);
+    setSessionExpired(false);
   };
-
   return (
     <AuthContext.Provider
       value={{
         user,
         isLoading,
         isAuthenticated: !!user,
+        error,
+        sessionExpired,
         login,
         logout,
         refreshUser,
@@ -66,12 +75,4 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </AuthContext.Provider>
   );
-};
-
-export function useAuth(): AuthContextType {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
 }

@@ -19,16 +19,15 @@ export const LoadingOrb: React.FC<LoadingOrbProps> = ({
   className,
   color = "#3b82f6",
 }) => {
-  const { theme } = useI18n();
+  const { theme, t } = useI18n();
 
   return (
-    <div className={cn("inline-flex items-center gap-3", className)}>
-      <ThinkingOrb state={state} size={size} color={color} theme={theme} />
-      {text && (
-        <span className="text-sm font-medium text-slate-300 animate-pulse">
-          {text}
-        </span>
-      )}
-    </div>
+    <span className={cn("inline-flex items-center gap-3", className)}>
+      <span aria-hidden="true">
+        <ThinkingOrb state={state} size={size} color={color} theme={theme} />
+      </span>
+      {!text && <span className="sr-only">{t("loading")}</span>}
+      {text && <span className="text-sm font-medium text-inherit">{text}</span>}
+    </span>
   );
 };

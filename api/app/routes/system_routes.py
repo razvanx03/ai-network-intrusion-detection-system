@@ -1,3 +1,4 @@
+from app.routes.deps import get_current_user
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.core.config import settings
@@ -16,7 +17,7 @@ from app.schemas.system import (
 )
 from app.services.system_service import SystemService
 
-router = APIRouter(prefix=SYSTEM_ROUTE_PREFIX, tags=["System & Sensor Operations"])
+router = APIRouter(prefix=SYSTEM_ROUTE_PREFIX, tags=["System & Sensor Operations"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/fetch-and-analyze", response_model=FetchAnalyzeResponse)
@@ -33,7 +34,7 @@ async def fetch_and_analyze(db: Session = Depends(get_db)):
 
 @router.post("/reset-sensor", response_model=SensorResetResponse)
 async def reset_sensor(db: Session = Depends(get_db)):
-    """Reset the log file on the remote Zeek sensor (or reset mock stream)."""
+    """Reset read cursors on the remote Zeek sensor (or reset mock stream)."""
     service = SystemService(db)
     return await service.reset_sensor()
 

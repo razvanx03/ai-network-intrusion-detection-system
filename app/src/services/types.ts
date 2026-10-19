@@ -1,0 +1,80 @@
+export interface User {
+  id: number;
+  username: string;
+  is_active: boolean;
+  is_admin: boolean;
+  created_at: string;
+}
+export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+export type AlertStatus =
+  "NEW" | "ACKNOWLEDGED" | "RESOLVED" | "FALSE_POSITIVE";
+export interface Alert {
+  id: number;
+  timestamp: string;
+  connection_id: number | null;
+  src_ip: string;
+  dst_ip: string;
+  dst_port: number | null;
+  attack_type: string;
+  severity: Severity;
+  confidence: number;
+  detector: string;
+  description: string;
+  mitre_technique: string | null;
+  status: AlertStatus;
+}
+export interface Connection {
+  id: number;
+  uid: string;
+  ts: number;
+  src_ip: string;
+  src_port: number;
+  dst_ip: string;
+  dst_port: number;
+  proto: string;
+  service: string | null;
+  duration: number | null;
+  orig_bytes: number | null;
+  resp_bytes: number | null;
+  conn_state: string | null;
+  orig_pkts: number | null;
+  resp_pkts: number | null;
+  history: string | null;
+  created_at: string;
+}
+export interface Page<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+export interface AlertStats {
+  total_alerts: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  unresolved_count: number;
+  top_attack_types: { attack_type: string; count: number }[];
+  top_attacking_ips: { src_ip: string; count: number }[];
+}
+export interface Health {
+  status: string;
+  database: string;
+  sensor_mode: string;
+  connections_total: number;
+  alerts_total: number;
+}
+export interface Operation {
+  status: string;
+  message: string;
+}
+export interface AnalysisResult extends Operation {
+  new_connections_ingested: number;
+  new_alerts_detected: number;
+  alerts_summary: Record<string, number>;
+}
+export interface ClearResult extends Operation {
+  deleted_connections: number;
+  deleted_alerts: number;
+}

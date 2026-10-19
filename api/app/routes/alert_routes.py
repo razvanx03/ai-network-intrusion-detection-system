@@ -1,3 +1,4 @@
+from app.routes.deps import get_current_user
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
@@ -6,7 +7,7 @@ from app.database.session import get_db
 from app.schemas.alert import AlertResponse, AlertFilter, AlertStatsResponse, AlertStatusUpdate
 from app.services.alert_service import AlertService
 
-router = APIRouter(prefix=ALERT_ROUTE_PREFIX, tags=["Intrusion Alerts"])
+router = APIRouter(prefix=ALERT_ROUTE_PREFIX, tags=["Intrusion Alerts"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=dict)

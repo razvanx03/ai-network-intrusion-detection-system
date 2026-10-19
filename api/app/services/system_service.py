@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from app.integrations.sensor_client import sensor_client
-from app.ai.detector import detector_engine
+from app.ai.engine import analysis_engine
 from app.repositories.connection_repository import ConnectionRepository
 from app.repositories.alert_repository import AlertRepository
 from app.schemas.connection import ZeekLogItem
@@ -26,30 +26,25 @@ class SystemService:
         5. Save generated alerts to SQLite
         6. Return operation summary
         """
-        raw_logs = await sensor_client.fetch_new_logs()
-        if not raw_logs:
-            return {
-                "status": "success",
-                "message": "No new logs available from sensor.",
-                "new_connections_ingested": 0,
-                "new_alerts_detected": 0,
-                "alerts_summary": {},
-            }
-
-        # 1. Parse and validate logs (fail fast on malformed entries)
-        validated_connections = [
-            ZeekLogItem.model_validate(raw).model_dump()
-            for raw in raw_logs
-        ]
-
-        # 2. Persist connections
-        created_conns = self.conn_repo.create_batch(validated_connections)
-
-        # 3. Analyze through AI & Heuristics engine
-        detected_alerts = detector_engine.analyze_batch(validated_connections)
-
-        # 4. Persist alerts
-        created_alerts = self.alert_repo.create_batch(detected_alerts)
+        batch = await sensor_client.fetch_new_logs()
+        try:
+            validated_connections = [
+                ZeekLogItem.model_validate(raw).model_dump() for raw in batch.records
+            ]
+            # Both writes belong to one transaction. Retry only analyzes new UIDs.
+            created_conns = self.conn_repo.create_batch(validated_connections)
+            new_uids = {connection.uid for connection in created_conns}
+            unique_connections = {item["uid"]: item for item in validated_connections}
+            detected_alerts = analysis_engine.analyze_batch([
+                item for uid, item in unique_connections.items() if uid in new_uids
+            ])
+            created_alerts = self.alert_repo.create_batch(detected_alerts)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        # If acknowledgement fails, report failure; the same durable batch can be retried.
+        await sensor_client.acknowledge(batch.batch_id)
 
         severity_summary = {}
         for a in created_alerts:

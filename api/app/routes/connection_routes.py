@@ -1,3 +1,4 @@
+from app.routes.deps import get_current_user
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -6,7 +7,7 @@ from app.database.session import get_db
 from app.schemas.connection import ConnectionResponse, ConnectionFilter
 from app.services.connection_service import ConnectionService
 
-router = APIRouter(prefix=CONNECTION_ROUTE_PREFIX, tags=["Network Logs"])
+router = APIRouter(prefix=CONNECTION_ROUTE_PREFIX, tags=["Network Logs"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/connections")

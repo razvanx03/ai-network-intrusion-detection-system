@@ -14,7 +14,7 @@ class AlertRepository(BaseRepository[Alert]):
             return []
         objs = [Alert(**a) for a in alert_dicts]
         self.db.add_all(objs)
-        self.db.commit()
+        self.db.flush()
         for obj in objs:
             self.db.refresh(obj)
         return objs
@@ -45,7 +45,7 @@ class AlertRepository(BaseRepository[Alert]):
             count_stmt = count_stmt.where(Alert.src_ip == src_ip)
 
         total = self.db.scalar(count_stmt) or 0
-        stmt = stmt.order_by(desc(Alert.timestamp)).offset(offset).limit(limit)
+        stmt = stmt.order_by(desc(Alert.timestamp), desc(Alert.id)).offset(offset).limit(limit)
         results = list(self.db.scalars(stmt).all())
         return results, total
 

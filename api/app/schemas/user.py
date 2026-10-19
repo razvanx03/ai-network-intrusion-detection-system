@@ -26,3 +26,8 @@ class UserResponse(BaseModel):
 
 
 TokenResponse.model_rebuild()
+
+
+class SessionResponse(BaseModel):
+    expires_in_minutes: int
+    user: UserResponse

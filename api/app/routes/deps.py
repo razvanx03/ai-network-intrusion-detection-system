@@ -38,4 +38,7 @@ def get_current_user(
             detail="User not found.",
         )
 
+    if not user.is_active or not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Active administrator required.")
+
     return user
