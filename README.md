@@ -128,7 +128,7 @@ npm run dev
 - Set secure-cookie options appropriately for deployment over HTTPS. Local HTTP development must use an explicit compatible configuration.
 - The dashboard supports paginated alerts and connections, visible request errors, and Romanian/English themes and labels. Alert exports include all records matching the selected severity, not just the visible page.
 - `api/app/ai/engine.py` defines the analysis interface. The existing demonstration engine is its current implementation; replace it when the real AI is ready.
-- The VM collector uses durable batches acknowledged after database commit. Retries analyze only new connection UIDs. Retained JSON/TSV conn.log files and gzip archives are supported; unread archives must not be deleted before ingestion. Deploy the updated backend and sensor together. See [sensor setup and recovery](sensor_agent/README.md).
+- The VM collector discovers current JSON conn.log streams and retained gzip archives. The backend commits each file cursor together with connections and alerts in SQLite, resumes across rotation, and analyzes only new connection UIDs. Retain unread archives until ingestion. Deploy the updated backend and sensor together. See [sensor setup and recovery](sensor_agent/README.md).
 - Sensor mode describes configuration, not a live VM connectivity probe.
 - Source files under `app/src/lib/` must be included when committing the frontend. Python environment directories remain ignored.
 

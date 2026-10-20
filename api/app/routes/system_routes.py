@@ -1,5 +1,5 @@
 from app.routes.deps import get_current_user
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.constants import (
@@ -16,6 +16,7 @@ from app.schemas.system import (
     SensorResetResponse,
 )
 from app.services.system_service import SystemService
+from app.repositories.sensor_cursor_repository import CursorConflictError
 
 router = APIRouter(prefix=SYSTEM_ROUTE_PREFIX, tags=["System & Sensor Operations"], dependencies=[Depends(get_current_user)])
 
@@ -28,8 +29,10 @@ async def fetch_and_analyze(db: Session = Depends(get_db)):
     persists records and alerts into database, and returns analysis summary.
     """
     service = SystemService(db)
-    result = await service.fetch_and_analyze()
-    return result
+    try:
+        return await service.fetch_and_analyze()
+    except CursorConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/reset-sensor", response_model=SensorResetResponse)

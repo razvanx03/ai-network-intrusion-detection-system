@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import hmac
 import json
 import os
@@ -47,7 +48,7 @@ if not 1024 <= MAX_BYTES <= 16 * 1024 * 1024:
 if not 1024 <= MAX_LINE_BYTES <= MAX_BYTES:
     raise RuntimeError("MAX_LINE_BYTES must be between 1 KiB and MAX_BATCH_BYTES.")
 
-app = FastAPI(title="Zeek Sensor Agent", version="2.1.0")
+app = FastAPI(title="Zeek Sensor Agent", version="2.2.0")
 
 
 def authenticate(x_api_key: str | None = Header(default=None)):
@@ -118,6 +119,57 @@ def open_log(path: Path) -> BinaryIO:
     return open(path, "rb")
 
 
+def stream_identity(stream: BinaryIO, sealed: bool = False) -> tuple[str, float] | None:
+    """A first-record digest survives Zeek rename and gzip rotation."""
+    stream.seek(0)
+    while line := stream.readline(MAX_LINE_BYTES + 1):
+        if len(line) > MAX_LINE_BYTES:
+            raise HTTPException(status_code=413, detail="Log line too large.")
+        if not line.endswith(b"\n"):
+            if sealed:
+                raise HTTPException(status_code=422, detail="Incomplete record in archived log.")
+            return None
+        record = parse_record(line)
+        if record is not None:
+            if "uid" not in record or "ts" not in record:
+                raise HTTPException(status_code=422, detail="Expected a conn.log record.")
+            canonical = json.dumps(record, sort_keys=True, separators=(",", ":"))
+            return hashlib.sha256(canonical.encode()).hexdigest(), float(record["ts"])
+    return None
+
+
+@app.get("/files", dependencies=[Depends(authenticate)])
+def list_files():
+    """List connection streams only; summary logs are not connection records."""
+    candidates = [
+        (path.relative_to(LOG_DIR).as_posix(), path, True)
+        for path in (*LOG_DIR.rglob("conn.*.log*"), *LOG_DIR.rglob("conn.log"))
+        if path.name.endswith((".log", ".log.gz"))
+        and path.relative_to(LOG_DIR).parts[0] != "current"
+    ]
+    current = CURRENT_LOG_DIR / "conn.log"
+    if current.exists():
+        candidates.append(("current/conn.log", current, False))
+    files = {}
+    try:
+        # Prefer a stable archive if rotation exposes the same stream twice.
+        for name, path, archived in sorted(candidates):
+            path = resolve_log_file(name)
+            with open_log(path) as stream:
+                identity = stream_identity(stream, sealed=archived)
+            if identity is None:
+                continue
+            file_id, first_ts = identity
+            if file_id not in files or archived:
+                files[file_id] = {
+                    "file": name, "file_id": file_id, "archived": archived,
+                    "first_ts": first_ts,
+                }
+    except (OSError, EOFError, ValueError):
+        raise HTTPException(status_code=503, detail="Could not enumerate logs; retry after rotation.")
+    return {"files": sorted(files.values(), key=lambda item: (item["first_ts"], item["file"]))}
+
+
 @app.get("/health", dependencies=[Depends(authenticate)])
 def health():
     return {"status": "ok", "service": "zeek-sensor-agent"}
@@ -128,6 +180,7 @@ def read_logs(
     file: str = Query(..., description="Relative path, e.g. current/conn.log"),
     offset: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=1000),
+    file_id: str | None = Query(None, min_length=64, max_length=64),
 ):
     """Read a batch of JSON Zeek records; the backend owns cursor persistence."""
     if limit > MAX_RECORDS:
@@ -143,6 +196,11 @@ def read_logs(
 
     try:
         with open_log(path) as stream:
+            archived = not file.startswith("current/")
+            identity = stream_identity(stream, sealed=archived)
+            actual_id = identity[0] if identity else None
+            if file_id is not None and actual_id != file_id:
+                raise HTTPException(status_code=409, detail="Log rotated; refresh the file list.")
             try:
                 stream.seek(offset)
             except (OSError, ValueError):
@@ -173,6 +231,8 @@ def read_logs(
 
                 # Do not consume a partial line while Zeek is writing it.
                 if not line.endswith(b"\n"):
+                    if archived:
+                        raise HTTPException(status_code=422, detail="Incomplete record in archived log.")
                     stream.seek(line_start)
                     next_offset = line_start
                     break
@@ -186,6 +246,8 @@ def read_logs(
                 record_size = len(
                     json.dumps(record, separators=(",", ":")).encode("utf-8")
                 )
+                if record_size > MAX_BYTES:
+                    raise HTTPException(status_code=413, detail="Record exceeds batch byte limit.")
 
                 if records and response_bytes + record_size > MAX_BYTES:
                     stream.seek(line_start)
@@ -225,6 +287,7 @@ def read_logs(
 
     return {
         "file": file,
+        "file_id": actual_id,
         "offset": offset,
         "next_offset": next_offset,
         "records_returned": len(records),
