@@ -1,219 +1,237 @@
-"""On-demand Zeek reader with durable, acknowledged batches."""
+
+from __future__ import annotations
+
 import gzip
-import hashlib
 import hmac
 import json
 import os
-import sqlite3
-import uuid
-from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, BinaryIO
 
 import uvicorn
 from dotenv import dotenv_values
-from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
+
+# Load .env from the same directory as this script.
+ENV_FILE = Path(__file__).with_name(".env")
+config = {**dotenv_values(ENV_FILE), **os.environ}
 
 
-@dataclass(frozen=True)
-class Config:
-    host: str
-    port: int
-    api_key: str
-    log_dir: Path
-    state_file: Path
-    batch_size: int
-
-    @classmethod
-    def load(cls):
-        env_file = Path(__file__).with_name(".env")
-        if not env_file.is_file():
-            raise RuntimeError(f"Missing sensor configuration: {env_file}")
-        values = {**dotenv_values(env_file), **os.environ}
-        names = ("AGENT_HOST", "AGENT_PORT", "API_KEY", "ZEEK_LOG_DIR", "STATE_FILE", "BATCH_SIZE")
-        for name in names:
-            if not values.get(name):
-                raise RuntimeError(f"Missing sensor configuration: {name}")
-        config = cls(values["AGENT_HOST"], int(values["AGENT_PORT"]), values["API_KEY"],
-                     Path(values["ZEEK_LOG_DIR"]), Path(values["STATE_FILE"]), int(values["BATCH_SIZE"]))
-        if len(config.api_key) < 32 or config.api_key == "nids-sensor-agent-secret-key":
-            raise RuntimeError("API_KEY must be a randomly generated secret of at least 32 characters")
-        if not 1 <= config.port <= 65535 or not 1 <= config.batch_size <= 1000:
-            raise RuntimeError("Invalid AGENT_PORT or BATCH_SIZE (allowed: 1..1000)")
-        if not config.log_dir.is_absolute() or not config.state_file.is_absolute():
-            raise RuntimeError("ZEEK_LOG_DIR and STATE_FILE must be absolute paths")
-        return config
+def required(name: str) -> str:
+    value = config.get(name)
+    if value is None or not str(value).strip():
+        raise RuntimeError(f"Missing configuration: {name}")
+    return str(value).strip()
 
 
-MAX_LINE_BYTES = 1024 * 1024
-MAX_BATCH_BYTES = 4 * 1024 * 1024
+HOST = required("AGENT_HOST")
+PORT = int(required("AGENT_PORT"))
+API_KEY = required("API_KEY")
+LOG_DIR = Path(required("ZEEK_LOG_DIR")).resolve()
+CURRENT_LOG_DIR = (LOG_DIR.parent / "spool" / "zeek").resolve()
+
+MAX_RECORDS = int(config.get("MAX_BATCH_RECORDS", "500"))
+MAX_BYTES = int(config.get("MAX_BATCH_BYTES", str(4 * 1024 * 1024)))
+MAX_LINE_BYTES = int(config.get("MAX_LINE_BYTES", str(1024 * 1024)))
+
+if len(API_KEY) < 32 or API_KEY.startswith("REPLACE_"):
+    raise RuntimeError("Set API_KEY to a random secret of at least 32 characters.")
+if not LOG_DIR.is_dir():
+    raise RuntimeError(f"Zeek log directory does not exist: {LOG_DIR}")
+if not CURRENT_LOG_DIR.is_dir():
+    raise RuntimeError(f"Zeek current log directory does not exist: {CURRENT_LOG_DIR}")
+if not 1 <= MAX_RECORDS <= 1000:
+    raise RuntimeError("MAX_BATCH_RECORDS must be between 1 and 1000.")
+if not 1024 <= MAX_BYTES <= 16 * 1024 * 1024:
+    raise RuntimeError("MAX_BATCH_BYTES must be between 1 KiB and 16 MiB.")
+if not 1024 <= MAX_LINE_BYTES <= MAX_BYTES:
+    raise RuntimeError("MAX_LINE_BYTES must be between 1 KiB and MAX_BATCH_BYTES.")
+
+app = FastAPI(title="Zeek Sensor Agent", version="2.1.0")
 
 
-class Acknowledgement(BaseModel):
-    batch_id: str
+def authenticate(x_api_key: str | None = Header(default=None)):
+    if x_api_key is None or not hmac.compare_digest(x_api_key, API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid API key.")
 
 
-class Reader:
-    def __init__(self, config: Config):
-        self.config = config
-        if not config.log_dir.is_dir():
-            raise RuntimeError(f"Zeek log directory missing: {config.log_dir}")
-        config.state_file.parent.mkdir(parents=True, exist_ok=True)
-        with self.database() as db:
-            db.execute("CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)")
-            db.execute("INSERT OR IGNORE INTO state VALUES (1, ?)",
-                       (json.dumps({"cursors": {}, "pending": None, "last_ack": None}),))
-            self.load(db)
+def resolve_log_file(file: str) -> Path:
+    relative = Path(file)
 
-    @contextmanager
-    def database(self):
-        db = sqlite3.connect(self.config.state_file, timeout=30)
-        try:
-            db.execute("PRAGMA synchronous=FULL")
-            db.execute("BEGIN IMMEDIATE")
-            yield db
-            db.commit()
-        except Exception:
-            db.rollback()
-            raise
-        finally:
-            db.close()
+    if relative.is_absolute() or ".." in relative.parts:
+        raise HTTPException(status_code=400, detail="Invalid log path.")
 
-    @staticmethod
-    def load(db):
-        state = json.loads(db.execute("SELECT data FROM state WHERE id=1").fetchone()[0])
-        if not isinstance(state.get("cursors"), dict):
-            raise RuntimeError("Invalid sensor cursor state; restore the state database")
-        return state
+    if not file.endswith((".log", ".log.gz")):
+        raise HTTPException(
+            status_code=400,
+            detail="Only .log and .log.gz files are supported.",
+        )
 
-    @staticmethod
-    def save(db, state):
-        db.execute("UPDATE state SET data=? WHERE id=1", (json.dumps(state),))
+    # Map the virtual "current/" prefix to Zeek's active log directory.
+    if relative.parts and relative.parts[0] == "current":
+        remaining = Path(*relative.parts[1:])
+        candidate = CURRENT_LOG_DIR / remaining
+        allowed_root = CURRENT_LOG_DIR
+    else:
+        candidate = LOG_DIR / relative
+        allowed_root = LOG_DIR
 
-    @staticmethod
-    def line(stream):
-        line = stream.readline(MAX_LINE_BYTES + 1)
-        if len(line) > MAX_LINE_BYTES:
-            raise RuntimeError("Zeek record exceeds the 1 MiB line limit")
-        return line
+    path = candidate.resolve()
 
-    def batch(self):
-        with self.database() as db:
-            state = self.load(db)
-            if state["pending"]:
-                return state["pending"]["payload"]
-            # Current/ may be a symlink. Include it explicitly and deduplicate paths.
-            paths = set(self.config.log_dir.rglob("conn*.log*"))
-            paths.update((self.config.log_dir / "current").glob("conn*.log*"))
-            paths = {p.resolve() for p in paths if p.is_file() and (p.name.endswith(".log") or p.name.endswith(".log.gz"))}
-            if not paths:
-                raise RuntimeError("No Zeek conn.log files found; check Zeek and ZEEK_LOG_DIR")
-            cursors = dict(state["cursors"])
-            records, seen, size = [], set(), 0
-            for path in sorted(paths, key=lambda p: (p.stat().st_mtime_ns, str(p))):
-                opener = gzip.open if path.suffix == ".gz" else open
-                with opener(path, "rb") as stream:
-                    headers = []
-                    # The first complete data record identifies the stream across rename/compression.
-                    while True:
-                        first = self.line(stream)
-                        if not first or not first.endswith(b"\n"):
-                            break
-                        if first.startswith(b"#fields\t"):
-                            headers = first.decode("utf-8").rstrip("\r\n").split("\t")[1:]
-                        if first.strip() and not first.startswith(b"#"):
-                            break
-                    if not first or not first.endswith(b"\n") or first.startswith(b"#"):
-                        continue
-                    identity = hashlib.sha256(first).hexdigest()
-                    if identity in seen:
-                        continue
-                    seen.add(identity)
-                    offset = cursors.get(identity, 0)
-                    stream.seek(0, 2)
-                    if stream.tell() < offset:
-                        raise RuntimeError(f"Zeek file truncated after ingestion: {path}")
-                    stream.seek(offset)
-                    while len(records) < self.config.batch_size and size < MAX_BATCH_BYTES:
-                        start = stream.tell()
-                        line = self.line(stream)
-                        if not line or not line.endswith(b"\n"):
-                            break  # An unfinished final record is retried on the next request.
-                        text = line.decode("utf-8").rstrip("\r\n")
-                        if text.startswith("#fields\t"):
-                            headers = text.split("\t")[1:]
-                        elif text and not text.startswith("#"):
-                            if text.startswith("{"):
-                                record = json.loads(text)
-                                if not isinstance(record, dict):
-                                    raise ValueError("Expected a JSON object")
-                            else:
-                                columns = text.split("\t")
-                                if not headers or len(columns) != len(headers):
-                                    raise ValueError(f"Malformed Zeek TSV record at {path}:{start}")
-                                record = dict(zip(headers, columns))
-                            records.append(record)
-                            size += len(line)
-                        cursors[identity] = stream.tell()
-                    if len(records) >= self.config.batch_size or size >= MAX_BATCH_BYTES:
+    try:
+        path.relative_to(allowed_root)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Path outside allowed Zeek log directory.",
+        )
+
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Log file not found.")
+
+    return path
+
+
+def parse_record(line: bytes) -> dict[str, Any] | None:
+    line = line.strip()
+
+    if not line or line.startswith(b"#"):
+        return None
+
+    try:
+        record = json.loads(line)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid log record. This agent expects Zeek JSON logs.",
+        )
+
+    if not isinstance(record, dict):
+        raise HTTPException(status_code=422, detail="Expected a JSON object.")
+
+    return record
+
+
+def open_log(path: Path) -> BinaryIO:
+    if path.name.endswith(".gz"):
+        return gzip.open(path, "rb")
+    return open(path, "rb")
+
+
+@app.get("/health", dependencies=[Depends(authenticate)])
+def health():
+    return {"status": "ok", "service": "zeek-sensor-agent"}
+
+
+@app.get("/logs", dependencies=[Depends(authenticate)])
+def read_logs(
+    file: str = Query(..., description="Relative path, e.g. current/conn.log"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=1000),
+):
+    """Read a batch of JSON Zeek records; the backend owns cursor persistence."""
+    if limit > MAX_RECORDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"limit cannot exceed {MAX_RECORDS}.",
+        )
+
+    path = resolve_log_file(file)
+    records: list[dict[str, Any]] = []
+    response_bytes = 0
+    has_more = False
+
+    try:
+        with open_log(path) as stream:
+            try:
+                stream.seek(offset)
+            except (OSError, ValueError):
+                raise HTTPException(status_code=416, detail="Invalid offset.")
+
+            if offset:
+                stream.seek(offset - 1)
+                previous = stream.read(1)
+                stream.seek(offset)
+                if previous != b"\n":
+                    raise HTTPException(
+                        status_code=416,
+                        detail="Offset must be a line boundary returned by this endpoint.",
+                    )
+
+            next_offset = offset
+
+            while True:
+                line_start = stream.tell()
+                line = stream.readline(MAX_LINE_BYTES + 1)
+
+                if not line:
+                    next_offset = stream.tell()
+                    break
+
+                if len(line) > MAX_LINE_BYTES:
+                    raise HTTPException(status_code=413, detail="Log line too large.")
+
+                # Do not consume a partial line while Zeek is writing it.
+                if not line.endswith(b"\n"):
+                    stream.seek(line_start)
+                    next_offset = line_start
+                    break
+
+                record = parse_record(line)
+
+                if record is None:
+                    next_offset = stream.tell()
+                    continue
+
+                record_size = len(
+                    json.dumps(record, separators=(",", ":")).encode("utf-8")
+                )
+
+                if records and response_bytes + record_size > MAX_BYTES:
+                    stream.seek(line_start)
+                    next_offset = line_start
+                    has_more = True
+                    break
+
+                if len(records) >= limit:
+                    stream.seek(line_start)
+                    next_offset = line_start
+                    has_more = True
+                    break
+
+                records.append(record)
+                response_bytes += record_size
+                next_offset = stream.tell()
+
+            if not has_more and len(records) >= limit:
+                saved_position = stream.tell()
+
+                while True:
+                    line = stream.readline(MAX_LINE_BYTES + 1)
+                    if not line or not line.endswith(b"\n"):
                         break
-            payload = {"batch_id": str(uuid.uuid4()), "records": records}
-            state["pending"] = {"payload": payload, "cursors": cursors}
-            self.save(db, state)
-            return payload
+                    if len(line) > MAX_LINE_BYTES:
+                        raise HTTPException(status_code=413, detail="Log line too large.")
+                    if parse_record(line) is not None:
+                        has_more = True
+                        break
 
-    def acknowledge(self, batch_id):
-        with self.database() as db:
-            state = self.load(db)
-            if state["last_ack"] == batch_id:
-                return
-            pending = state["pending"]
-            if not pending or pending["payload"]["batch_id"] != batch_id:
-                raise HTTPException(409, "Unknown or superseded batch")
-            state.update(cursors=pending["cursors"], pending=None, last_ack=batch_id)
-            self.save(db, state)
+                stream.seek(saved_position)
 
-    def reset(self):
-        with self.database() as db:
-            state = self.load(db)
-            if state["pending"]:
-                raise HTTPException(409, "A batch is awaiting acknowledgement; finish ingestion before resetting")
-            self.save(db, {"cursors": {}, "pending": None, "last_ack": None})
+    except HTTPException:
+        raise
+    except (OSError, EOFError, ValueError):
+        raise HTTPException(status_code=500, detail="Could not read log file.")
 
-
-def create_app(config: Config | None = None):
-    config = config or Config.load()
-    reader = Reader(config)
-    app = FastAPI(title="AI NIDS Sensor Agent", docs_url=None, redoc_url=None)
-
-    def authenticate(x_api_key: str | None = Header(default=None)):
-        if x_api_key is None or not hmac.compare_digest(x_api_key.encode(), config.api_key.encode()):
-            raise HTTPException(401, "Invalid sensor API key")
-
-    @app.get("/health", dependencies=[Depends(authenticate)])
-    def health():
-        with reader.database() as db:
-            state = reader.load(db)
-        return {"status": "online", "pending_batch": state["pending"] is not None}
-
-    @app.get("/logs", dependencies=[Depends(authenticate)])
-    def logs():
-        return reader.batch()
-
-    @app.post("/logs/ack", dependencies=[Depends(authenticate)])
-    def acknowledge(body: Acknowledgement):
-        reader.acknowledge(body.batch_id)
-        return {"status": "acknowledged"}
-
-    @app.delete("/logs", dependencies=[Depends(authenticate)])
-    def reset():
-        reader.reset()
-        return {"status": "cursor_reset"}
-
-    return app
+    return {
+        "file": file,
+        "offset": offset,
+        "next_offset": next_offset,
+        "records_returned": len(records),
+        "has_more": has_more,
+        "records": records,
+    }
 
 
 if __name__ == "__main__":
-    configuration = Config.load()
-    uvicorn.run(create_app(configuration), host=configuration.host, port=configuration.port)
+    uvicorn.run(app, host=HOST, port=PORT)
