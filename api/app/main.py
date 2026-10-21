@@ -9,6 +9,8 @@ from app.routes.auth_routes import router as auth_router
 from app.routes.connection_routes import router as connection_router
 from app.routes.alert_routes import router as alert_router
 from app.routes.system_routes import router as system_router
+from app.routes.analysis_routes import router as analysis_router
+from app.repositories.analysis_repository import AnalysisRepository
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,6 +25,9 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database tables and admin seed...")
     with SessionLocal() as db:
         init_db(db)
+        # Request-driven execution uses one API worker; interrupted requests do not resume silently.
+        AnalysisRepository(db).interrupt_running()
+        db.commit()
     logger.info("Database initialized successfully.")
     yield
     # Shutdown
@@ -51,6 +56,7 @@ app.include_router(auth_router, prefix=prefix)
 app.include_router(connection_router, prefix=prefix)
 app.include_router(alert_router, prefix=prefix)
 app.include_router(system_router, prefix=prefix)
+app.include_router(analysis_router, prefix=prefix)
 
 
 @app.get("/")

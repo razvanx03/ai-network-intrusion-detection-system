@@ -7,6 +7,8 @@ class AlertResponse(BaseModel):
     id: int
     timestamp: datetime
     connection_id: Optional[int] = None
+    analysis_session_id: Optional[str] = None
+    provenance: str
     src_ip: str
     dst_ip: str
     dst_port: Optional[int] = None

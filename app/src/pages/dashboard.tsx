@@ -13,6 +13,7 @@ import { useDashboard } from "@/hooks/use-dashboard";
 import { useI18n } from "@/i18n";
 import { api } from "@/services/api";
 import type { Severity } from "@/services/types";
+import { AnalysisSessions } from "@/components/dashboard/analysis-sessions";
 const Charts = lazy(() => import("@/components/dashboard/charts"));
 export default function DashboardPage() {
   const { t } = useI18n();
@@ -31,10 +32,11 @@ export default function DashboardPage() {
       if (command === "analyze") {
         const result = await api.fetchAndAnalyze();
         setNotice({
-          key: "analysis_done",
+          key: result.analysis_session.detector_status === "not_configured" ? "analysis_prepared" : "analysis_done",
           params: {
             conns: result.new_connections_ingested,
             alerts: result.new_alerts_detected,
+            prepared: result.analysis_session.records_prepared,
           },
         });
       } else if (command === "sensor") {
@@ -69,11 +71,13 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <Commands
         busy={busy}
+        detectorStatus={resource.data?.health.detector_status}
         run={(command) => {
           void run(command);
         }}
       />
       <OperationNotice notice={notice} close={() => setNotice(null)} />
+      <AnalysisSessions />
       <DataState
         loading={resource.loading}
         error={resource.error}
@@ -84,6 +88,9 @@ export default function DashboardPage() {
       />
       {resource.data && (
         <>
+          {resource.data.health.legacy_alerts_total > 0 && (
+            <p className="text-sm text-muted-foreground">{t("legacy_demo_notice", { count: resource.data.health.legacy_alerts_total })}</p>
+          )}
           <Metrics
             stats={resource.data.stats}
             connections={resource.data.health.connections_total}

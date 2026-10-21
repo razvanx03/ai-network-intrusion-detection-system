@@ -35,7 +35,7 @@ class AlertService:
         writer.writerow([
             "ID", "Timestamp", "Severity", "Attack Type", "MITRE Technique",
             "Confidence", "Source IP", "Destination IP", "Destination Port",
-            "Detector", "Status", "Description"
+            "Detector", "Status", "Description", "Analysis Session", "Provenance"
         ])
         for a in alerts:
             writer.writerow([
@@ -50,7 +50,7 @@ class AlertService:
                 a.dst_port or "",
                 a.detector or "",
                 a.status,
-                a.description or ""
+                a.description or "", a.analysis_session_id or "", a.provenance
             ])
         return output.getvalue()
 
@@ -70,6 +70,8 @@ class AlertService:
                 "detector": a.detector,
                 "status": a.status,
                 "description": a.description,
+                "analysis_session_id": a.analysis_session_id,
+                "provenance": a.provenance,
             }
             for a in alerts
         ]

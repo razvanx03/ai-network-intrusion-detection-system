@@ -2,6 +2,7 @@ from typing import List, Optional, Tuple, Dict, Any
 from sqlalchemy import select, func, desc, delete
 from sqlalchemy.orm import Session
 from app.models.alert import Alert
+from app.models.analysis_session import AlertConnection
 from app.repositories.base_repository import BaseRepository
 
 
@@ -18,6 +19,9 @@ class AlertRepository(BaseRepository[Alert]):
         for obj in objs:
             self.db.refresh(obj)
         return objs
+
+    def link_connections(self, alert_id: int, connection_ids: list[int]):
+        self.db.add_all([AlertConnection(alert_id=alert_id, connection_id=value) for value in connection_ids])
 
     def get_filtered(
         self,
@@ -59,6 +63,9 @@ class AlertRepository(BaseRepository[Alert]):
 
     def count_total(self) -> int:
         return self.db.scalar(select(func.count(Alert.id))) or 0
+
+    def count_legacy(self) -> int:
+        return self.db.scalar(select(func.count(Alert.id)).where(Alert.provenance == "legacy_demo")) or 0
 
     def get_stats(self) -> Dict[str, Any]:
         total = self.count_total()
@@ -109,7 +116,8 @@ class AlertRepository(BaseRepository[Alert]):
             stmt = stmt.where(Alert.severity == severity.upper())
         return list(self.db.scalars(stmt).all())
 
-    def delete_all(self) -> int:
+    def delete_all(self, commit: bool = True) -> int:
         deleted = self.db.execute(delete(Alert)).rowcount
-        self.db.commit()
+        if commit:
+            self.db.commit()
         return deleted

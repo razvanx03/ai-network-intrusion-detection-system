@@ -4,6 +4,8 @@ import type {
   AlertStats,
   AlertStatus,
   AnalysisResult,
+  AnalysisSession,
+  AnalysisConnection,
   ClearResult,
   Connection,
   Health,
@@ -85,6 +87,14 @@ export const api = {
     request<Health>("/system/health", { signal }),
   fetchAndAnalyze: () =>
     request<AnalysisResult>("/system/fetch-and-analyze", { method: "POST" }),
+  getAnalysisSessions: (offset: number, signal?: AbortSignal) =>
+    request<Page<AnalysisSession>>(`/analysis-sessions${query({ limit: 5, offset })}`, { signal }),
+  getAnalysisSession: (id: string, signal?: AbortSignal) =>
+    request<AnalysisSession>(`/analysis-sessions/${encodeURIComponent(id)}`, { signal }),
+  getAnalysisConnections: (id: string, offset: number, signal?: AbortSignal) =>
+    request<Page<AnalysisConnection>>(`/analysis-sessions/${encodeURIComponent(id)}/connections${query({ limit: 10, offset })}`, { signal }),
+  getAnalysisAlerts: (id: string, offset: number, signal?: AbortSignal) =>
+    request<Page<Alert>>(`/analysis-sessions/${encodeURIComponent(id)}/alerts${query({ limit: 5, offset })}`, { signal }),
   resetSensor: () =>
     request<Operation>("/system/reset-sensor", { method: "POST" }),
   clearDatabase: () =>

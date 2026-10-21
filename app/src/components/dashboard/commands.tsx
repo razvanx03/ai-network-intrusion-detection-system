@@ -24,9 +24,11 @@ export type Command =
 export function Commands({
   busy,
   run,
+  detectorStatus,
 }: {
   busy: Command | null;
   run: (command: Command) => void;
+  detectorStatus?: "configured" | "not_configured";
 }) {
   const { t } = useI18n();
   return (
@@ -34,7 +36,7 @@ export function Commands({
       <CardContent className="flex flex-col gap-4 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-base font-semibold">{t("console_title")}</h1>
-          <Badge variant="outline">{t("demo_detector")}</Badge>
+          {detectorStatus && <Badge variant="outline">{t(`detector_${detectorStatus}`)}</Badge>}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => run("analyze")} disabled={!!busy}>

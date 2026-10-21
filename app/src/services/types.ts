@@ -12,6 +12,8 @@ export interface Alert {
   id: number;
   timestamp: string;
   connection_id: number | null;
+  analysis_session_id: string | null;
+  provenance: "legacy_demo" | "analysis";
   src_ip: string;
   dst_ip: string;
   dst_port: number | null;
@@ -64,6 +66,8 @@ export interface Health {
   sensor_mode: string;
   connections_total: number;
   alerts_total: number;
+  legacy_alerts_total: number;
+  detector_status: "configured" | "not_configured";
 }
 export interface Operation {
   status: string;
@@ -73,6 +77,28 @@ export interface AnalysisResult extends Operation {
   new_connections_ingested: number;
   new_alerts_detected: number;
   alerts_summary: Record<string, number>;
+  analysis_session: AnalysisSession;
+}
+export interface AnalysisSession {
+  id: string;
+  source: "sensor" | "stored";
+  status: "running" | "completed" | "failed" | "interrupted";
+  detector_status: "configured" | "not_configured";
+  detector_name: string;
+  detector_version: string | null;
+  preparation_version: string;
+  records_received: number;
+  new_connections_ingested: number;
+  records_prepared: number;
+  new_alerts_detected: number;
+  error_code: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+export interface AnalysisConnection {
+  connection: Connection;
+  file_id: string | null;
+  file: string | null;
 }
 export interface ClearResult extends Operation {
   deleted_connections: number;

@@ -112,7 +112,11 @@ export function Alerts({
                     {alert.dst_ip}
                     {alert.dst_port != null && `:${alert.dst_port}`}
                   </TableCell>
-                  <TableCell className="text-xs">{alert.detector}</TableCell>
+                  <TableCell className="space-y-1 text-xs">
+                    <p>{alert.detector}</p>
+                    {alert.provenance === "legacy_demo" && <Badge variant="outline">{t("legacy_demo")}</Badge>}
+                    {alert.analysis_session_id && <p className="font-mono" title={alert.analysis_session_id}>{alert.analysis_session_id.slice(0, 8)}</p>}
+                  </TableCell>
                   <TableCell>{alert.mitre_technique ?? "—"}</TableCell>
                   <TableCell>
                     <Badge

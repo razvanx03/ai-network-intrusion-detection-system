@@ -13,6 +13,9 @@ class ConnectionRepository(BaseRepository[Connection]):
         stmt = select(Connection).where(Connection.uid == uid)
         return self.db.scalars(stmt).first()
 
+    def get_by_ids(self, ids: list[int]) -> list[Connection]:
+        return list(self.db.scalars(select(Connection).where(Connection.id.in_(ids)).order_by(Connection.id)).all())
+
     def create_batch(self, connection_dicts: List[dict]) -> List[Connection]:
         """Save a batch of connections, skipping duplicate UIDs."""
         if not connection_dicts:
@@ -71,7 +74,8 @@ class ConnectionRepository(BaseRepository[Connection]):
     def count_total(self) -> int:
         return self.db.scalar(select(func.count(Connection.id))) or 0
 
-    def delete_all(self) -> int:
+    def delete_all(self, commit: bool = True) -> int:
         deleted = self.db.execute(delete(Connection)).rowcount
-        self.db.commit()
+        if commit:
+            self.db.commit()
         return deleted
