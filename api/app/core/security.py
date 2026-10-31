@@ -2,6 +2,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Union
 import bcrypt
 import jwt
+import hashlib
+from uuid import uuid4
 from app.core.config import settings
 
 
@@ -36,6 +38,7 @@ def create_access_token(
         )
     
     to_encode = {
+        "jti": uuid4().hex,
         "sub": str(subject),
         "exp": expire,
         "iat": datetime.now(timezone.utc)
@@ -54,8 +57,15 @@ def decode_access_token(token: str) -> Optional[dict]:
         payload = jwt.decode(
             token,
             settings.SECRET_KEY,
-            algorithms=[settings.ALGORITHM]
+            algorithms=[settings.ALGORITHM],
+            options={"require": ["exp", "sub"]},
         )
         return payload
     except jwt.PyJWTError:
         return None
+
+
+def token_fingerprint(token: str) -> str:
+    """Fingerprint a verified JWT, normalizing equivalent signature encodings."""
+    signed, signature = token.rsplit(".", 1)
+    return hashlib.sha256(signed.encode("ascii") + b"." + jwt.utils.base64url_decode(signature)).hexdigest()

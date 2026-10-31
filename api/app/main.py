@@ -11,6 +11,7 @@ from app.routes.alert_routes import router as alert_router
 from app.routes.system_routes import router as system_router
 from app.routes.analysis_routes import router as analysis_router
 from app.repositories.analysis_repository import AnalysisRepository
+from app.ai import engine as ai_engine
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,6 +22,8 @@ logger = logging.getLogger("nids.main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Missing, corrupt or incompatible selected artifacts prevent startup.
+    ai_engine.configure_detector()
     # Startup: ensure tables exist and seed default admin user
     logger.info("Initializing database tables and admin seed...")
     with SessionLocal() as db:

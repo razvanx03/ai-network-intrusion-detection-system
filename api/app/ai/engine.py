@@ -1,4 +1,4 @@
-"""Replaceable inference contract. No detector/model is configured yet."""
+"""Replaceable inference contract; explicit deployment is loaded at API startup."""
 from typing import Protocol
 from pydantic import AwareDatetime, BaseModel, Field
 from typing import Literal
@@ -34,3 +34,9 @@ class UnconfiguredDetector:
 
 
 analysis_engine: AnalysisEngine = UnconfiguredDetector()
+
+
+def configure_detector() -> None:
+    from app.ai.detector import load_detector
+    global analysis_engine
+    analysis_engine = load_detector()

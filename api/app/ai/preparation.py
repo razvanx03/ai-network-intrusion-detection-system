@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict
 from app.models.connection import Connection
 from app.schemas.connection import ZeekLogItem
 
-PREPARATION_VERSION = "zeek-connection-v1"
+PREPARATION_VERSION = "zeek-connection-v2"
 
 
 class PreparedConnection(BaseModel):

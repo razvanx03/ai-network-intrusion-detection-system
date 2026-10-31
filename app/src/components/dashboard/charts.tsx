@@ -13,7 +13,6 @@ import {
 } from "recharts";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { useI18n } from "@/i18n";
-import { attackKeys } from "@/lib/display";
 import type { AlertStats } from "@/services/types";
 const colors = [
   "var(--critical)",
@@ -48,12 +47,10 @@ function ChartTooltip({
     </div>
   );
 }
-export default function Charts({ stats }: { stats: AlertStats }) {
+export default function Charts({ stats, protocols }: { stats: AlertStats; protocols: { proto: string; count: number }[] }) {
   const { t } = useI18n();
-  const attacks = stats.top_attack_types.map((item) => ({
-    name: attackKeys[item.attack_type]
-      ? t(attackKeys[item.attack_type])
-      : item.attack_type,
+  const attacks = protocols.map((item) => ({
+    name: item.proto.toUpperCase(),
     value: item.count,
   }));
   const severities = [
@@ -75,7 +72,7 @@ export default function Charts({ stats }: { stats: AlertStats }) {
     <div className="grid min-w-0 grid-cols-1 gap-3.5 lg:grid-cols-3">
       <Card className="min-w-0">
         <CardHeader>
-          <CardTitle className="text-sm">{t("chart_attacks_title")}</CardTitle>
+          <CardTitle className="text-sm">{t("chart_protocols_title")}</CardTitle>
         </CardHeader>
         <CardContent className="h-64">
           {!attacks.length ? (

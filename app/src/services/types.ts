@@ -8,6 +8,7 @@ export interface User {
 export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 export type AlertStatus =
   "NEW" | "ACKNOWLEDGED" | "RESOLVED" | "FALSE_POSITIVE";
+export type Provenance = "analysis" | "legacy_demo";
 export interface Alert {
   id: number;
   timestamp: string;
@@ -51,6 +52,7 @@ export interface Page<T> {
   offset: number;
 }
 export interface AlertStats {
+  false_positive_count: number;
   total_alerts: number;
   critical_count: number;
   high_count: number;
@@ -59,6 +61,22 @@ export interface AlertStats {
   unresolved_count: number;
   top_attack_types: { attack_type: string; count: number }[];
   top_attacking_ips: { src_ip: string; count: number }[];
+}
+export interface Overview {
+  connections_total: number;
+  analyzed_connections: number;
+  pending_connections: number;
+  flagged_connections: number;
+  sessions_total: number;
+  completed_sessions: number;
+  failed_sessions: number;
+  running_session_id: string | null;
+  protocols: { proto: string; count: number }[];
+  detector_name: string;
+  detector_version: string | null;
+}
+export interface SensorStatus {
+  status: "reachable" | "unreachable" | "unauthorized" | "invalid_response" | "sample_mode";
 }
 export interface Health {
   status: string;

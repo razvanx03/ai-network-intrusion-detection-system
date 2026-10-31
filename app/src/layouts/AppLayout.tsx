@@ -46,7 +46,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-1 sm:gap-3">
             <Badge variant="outline" className="hidden sm:inline-flex">
               {health.error
-                ? t("sensor_offline")
+                ? t("backend_unavailable")
                 : health.data
                   ? t(
                       health.data.sensor_mode === "mock_mode"

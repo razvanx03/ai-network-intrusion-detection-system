@@ -18,18 +18,19 @@ class AlertService:
             src_ip=filters.src_ip,
             limit=filters.limit,
             offset=filters.offset,
+            provenance=filters.provenance,
         )
 
-    def get_stats(self) -> Dict[str, Any]:
-        return self.alert_repo.get_stats()
+    def get_stats(self, provenance: str | None = None) -> Dict[str, Any]:
+        return self.alert_repo.get_stats(provenance)
 
     def update_alert_status(self, alert_id: int, new_status: str) -> Optional[Alert]:
         return self.alert_repo.update_status(alert_id, new_status)
 
-    def export_alerts_csv(self, severity: Optional[str] = None) -> str:
+    def export_alerts_csv(self, severity: Optional[str] = None, provenance: str | None = None) -> str:
         import csv
         import io
-        alerts = self.alert_repo.get_all_for_export(severity)
+        alerts = self.alert_repo.get_all_for_export(severity, provenance)
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([
@@ -47,15 +48,15 @@ class AlertService:
                 f"{a.confidence:.2f}" if a.confidence is not None else "",
                 a.src_ip,
                 a.dst_ip or "",
-                a.dst_port or "",
+                a.dst_port if a.dst_port is not None else "",
                 a.detector or "",
                 a.status,
                 a.description or "", a.analysis_session_id or "", a.provenance
             ])
         return output.getvalue()
 
-    def export_alerts_json(self, severity: Optional[str] = None) -> List[Dict[str, Any]]:
-        alerts = self.alert_repo.get_all_for_export(severity)
+    def export_alerts_json(self, severity: Optional[str] = None, provenance: str | None = None) -> List[Dict[str, Any]]:
+        alerts = self.alert_repo.get_all_for_export(severity, provenance)
         return [
             {
                 "id": a.id,

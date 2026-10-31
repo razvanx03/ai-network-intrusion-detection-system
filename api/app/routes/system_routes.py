@@ -14,6 +14,8 @@ from app.schemas.system import (
     SystemHealthResponse,
     FetchAnalyzeResponse,
     SensorResetResponse,
+    OverviewResponse,
+    SensorStatusResponse,
 )
 from app.services.system_service import SystemService
 from app.repositories.sensor_cursor_repository import CursorConflictError
@@ -23,6 +25,17 @@ from app.routes.analysis_routes import run_error
 from app.ai import engine
 
 router = APIRouter(prefix=SYSTEM_ROUTE_PREFIX, tags=["System & Sensor Operations"], dependencies=[Depends(get_current_user)])
+
+
+@router.get("/overview", response_model=OverviewResponse)
+def overview(db: Session = Depends(get_db)):
+    return SystemService(db).overview()
+
+
+@router.get("/sensor-status", response_model=SensorStatusResponse)
+async def sensor_status(db: Session = Depends(get_db)):
+    """Probe agent availability without fetching or analyzing connection records."""
+    return await SystemService(db).sensor_status()
 
 
 @router.post("/fetch-and-analyze", response_model=FetchAnalyzeResponse)

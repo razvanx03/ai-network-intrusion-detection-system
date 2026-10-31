@@ -13,12 +13,12 @@ class ZeekLogItem(BaseModel):
     dst_port: int = Field(alias="id.resp_p", ge=0, le=65535)
     proto: str = Field(min_length=1, max_length=16)
     service: Optional[str] = None
-    duration: Optional[float] = Field(default=0.0, ge=0, allow_inf_nan=False)
-    orig_bytes: Optional[int] = Field(default=0, ge=0)
-    resp_bytes: Optional[int] = Field(default=0, ge=0)
+    duration: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    orig_bytes: Optional[int] = Field(default=None, ge=0)
+    resp_bytes: Optional[int] = Field(default=None, ge=0)
     conn_state: Optional[str] = None
-    orig_pkts: Optional[int] = Field(default=0, ge=0)
-    resp_pkts: Optional[int] = Field(default=0, ge=0)
+    orig_pkts: Optional[int] = Field(default=None, ge=0)
+    resp_pkts: Optional[int] = Field(default=None, ge=0)
     history: Optional[str] = None
 
     @model_validator(mode="before")
@@ -41,7 +41,7 @@ class ZeekLogItem(BaseModel):
         # Zeek logs often use "-" for null or missing values
         for key in ["duration", "orig_bytes", "resp_bytes", "orig_pkts", "resp_pkts"]:
             if data.get(key) == "-":
-                data[key] = 0
+                data[key] = None
         for key in ["service", "conn_state", "history"]:
             if data.get(key) == "-":
                 data[key] = None

@@ -17,12 +17,12 @@ class Connection(Base):
     dst_port: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     proto: Mapped[str] = mapped_column(String(16), nullable=False)
     service: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    duration: Mapped[Optional[float]] = mapped_column(Float, default=0.0, nullable=True)
-    orig_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, default=0, nullable=True)
-    resp_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, default=0, nullable=True)
+    duration: Mapped[Optional[float]] = mapped_column(Float, default=None, nullable=True)
+    orig_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, default=None, nullable=True)
+    resp_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, default=None, nullable=True)
     conn_state: Mapped[Optional[str]] = mapped_column(String(16), index=True, nullable=True)
-    orig_pkts: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
-    resp_pkts: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True)
+    orig_pkts: Mapped[Optional[int]] = mapped_column(Integer, default=None, nullable=True)
+    resp_pkts: Mapped[Optional[int]] = mapped_column(Integer, default=None, nullable=True)
     history: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

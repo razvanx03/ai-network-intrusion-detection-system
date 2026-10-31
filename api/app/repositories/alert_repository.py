@@ -31,9 +31,14 @@ class AlertRepository(BaseRepository[Alert]):
         src_ip: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
+        provenance: str | None = None,
     ) -> Tuple[List[Alert], int]:
         stmt = select(Alert)
         count_stmt = select(func.count(Alert.id))
+
+        if provenance:
+            stmt = stmt.where(Alert.provenance == provenance)
+            count_stmt = count_stmt.where(Alert.provenance == provenance)
 
         if severity:
             stmt = stmt.where(Alert.severity == severity.upper())
@@ -67,23 +72,25 @@ class AlertRepository(BaseRepository[Alert]):
     def count_legacy(self) -> int:
         return self.db.scalar(select(func.count(Alert.id)).where(Alert.provenance == "legacy_demo")) or 0
 
-    def get_stats(self) -> Dict[str, Any]:
-        total = self.count_total()
+    def get_stats(self, provenance: str | None = None) -> Dict[str, Any]:
+        condition = Alert.provenance == provenance if provenance else True
+        total = self.db.scalar(select(func.count(Alert.id)).where(condition)) or 0
         
         # Severity breakdown
         severities = self.db.execute(
-            select(Alert.severity, func.count(Alert.id)).group_by(Alert.severity)
+            select(Alert.severity, func.count(Alert.id)).where(condition).group_by(Alert.severity)
         ).all()
         sev_map = {s[0]: s[1] for s in severities}
 
         # Unresolved count (NEW or ACKNOWLEDGED)
         unresolved = self.db.scalar(
-            select(func.count(Alert.id)).where(Alert.status.in_(["NEW", "ACKNOWLEDGED"]))
+            select(func.count(Alert.id)).where(condition, Alert.status.in_(["NEW", "ACKNOWLEDGED"]))
         ) or 0
 
         # Top attack types
         top_types_q = self.db.execute(
             select(Alert.attack_type, func.count(Alert.id).label("count"))
+            .where(condition)
             .group_by(Alert.attack_type)
             .order_by(desc("count"))
             .limit(5)
@@ -93,6 +100,7 @@ class AlertRepository(BaseRepository[Alert]):
         # Top attacking IPs
         top_ips_q = self.db.execute(
             select(Alert.src_ip, func.count(Alert.id).label("count"))
+            .where(condition)
             .group_by(Alert.src_ip)
             .order_by(desc("count"))
             .limit(5)
@@ -100,6 +108,7 @@ class AlertRepository(BaseRepository[Alert]):
         top_attacking_ips = [{"src_ip": r[0], "count": r[1]} for r in top_ips_q]
 
         return {
+            "false_positive_count": self.db.scalar(select(func.count(Alert.id)).where(condition, Alert.status == "FALSE_POSITIVE")) or 0,
             "total_alerts": total,
             "critical_count": sev_map.get("CRITICAL", 0),
             "high_count": sev_map.get("HIGH", 0),
@@ -110,8 +119,10 @@ class AlertRepository(BaseRepository[Alert]):
             "top_attacking_ips": top_attacking_ips,
         }
 
-    def get_all_for_export(self, severity: Optional[str] = None) -> List[Alert]:
+    def get_all_for_export(self, severity: Optional[str] = None, provenance: str | None = None) -> List[Alert]:
         stmt = select(Alert).order_by(desc(Alert.timestamp))
+        if provenance:
+            stmt = stmt.where(Alert.provenance == provenance)
         if severity:
             stmt = stmt.where(Alert.severity == severity.upper())
         return list(self.db.scalars(stmt).all())

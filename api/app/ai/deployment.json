@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "artifact": "models/selected.joblib",
+  "sha256": "5234d410a219d5bfe8f5943116db48e81f38513151ebc5496d96a564e6fdf38b",
+  "run_id": "cic-endpoint_pairs-42",
+  "model": "random_forest",
+  "scope": "Binary suspicious-connection screening; no attack-family or anomaly verdict.",
+  "threshold_source": "Benign validation records; target false-positive rate 1%."
+}

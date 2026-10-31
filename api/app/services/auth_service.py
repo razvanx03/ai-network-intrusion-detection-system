@@ -2,7 +2,8 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.constants import TOKEN_TYPE_BEARER
-from app.core.security import verify_password, create_access_token
+from app.core.security import verify_password, create_access_token, decode_access_token, token_fingerprint
+from app.repositories.token_repository import TokenRepository
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.user import LoginRequest, TokenResponse, UserResponse
@@ -31,3 +32,8 @@ class AuthService:
 
     def get_user_by_username(self, username: str) -> Optional[User]:
         return self.user_repo.get_by_username(username)
+
+    def revoke_token(self, token: str | None) -> None:
+        payload = decode_access_token(token) if token else None
+        if payload is not None and "exp" in payload:
+            TokenRepository(self.db).revoke(token_fingerprint(token), float(payload["exp"]))

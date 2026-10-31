@@ -13,13 +13,18 @@ import type {
   Page,
   Severity,
   User,
+  Overview,
+  SensorStatus,
+  Provenance,
 } from "./types";
 export class ApiError extends Error {
   readonly status: number;
-  constructor(status: number) {
+  readonly code?: string;
+  constructor(status: number, code?: string) {
     super(`API request failed (${status})`);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 const sessionListeners = new Set<() => void>();
@@ -53,7 +58,14 @@ async function responseFor(
       endpoint !== "/auth/login"
     )
       sessionListeners.forEach((listener) => listener());
-    throw new ApiError(response.status);
+    let code: string | undefined;
+    try {
+      const body: unknown = await response.json();
+      if (body && typeof body === "object" && "detail" in body && body.detail && typeof body.detail === "object" && "code" in body.detail && typeof body.detail.code === "string") code = body.detail.code;
+    } catch {
+      // An HTTP error may have no JSON body; its status remains authoritative.
+    }
+    throw new ApiError(response.status, code);
   }
   return response;
 }
@@ -85,6 +97,11 @@ export const api = {
   getMe: (signal?: AbortSignal) => request<User>("/auth/me", { signal }),
   getHealth: (signal?: AbortSignal) =>
     request<Health>("/system/health", { signal }),
+  getOverview: (signal?: AbortSignal) => request<Overview>("/system/overview", { signal }),
+  getSensorStatus: (signal?: AbortSignal) => request<SensorStatus>("/system/sensor-status", { signal }),
+  analyzeStored: (connection_ids: number[]) => request<AnalysisResult>("/analysis-sessions", {
+    method: "POST", body: JSON.stringify({ source: "stored", connection_ids }),
+  }),
   fetchAndAnalyze: () =>
     request<AnalysisResult>("/system/fetch-and-analyze", { method: "POST" }),
   getAnalysisSessions: (offset: number, signal?: AbortSignal) =>
@@ -97,14 +114,16 @@ export const api = {
     request<Page<Alert>>(`/analysis-sessions/${encodeURIComponent(id)}/alerts${query({ limit: 5, offset })}`, { signal }),
   resetSensor: () =>
     request<Operation>("/system/reset-sensor", { method: "POST" }),
+  getAlertConnections: (session: string, id: number, offset: number, signal?: AbortSignal) =>
+    request<Page<Connection>>(`/analysis-sessions/${encodeURIComponent(session)}/alerts/${id}/connections${query({ limit: 10, offset })}`, { signal }),
   clearDatabase: () =>
     request<ClearResult>("/system/clear-database", { method: "POST" }),
   getAlerts: (
-    params: { severity?: Severity; limit?: number; offset?: number } = {},
+    params: { severity?: Severity; status?: AlertStatus; provenance?: Provenance; limit?: number; offset?: number } = {},
     signal?: AbortSignal,
   ) => request<Page<Alert>>(`/alerts${query(params)}`, { signal }),
   getAlertStats: (signal?: AbortSignal) =>
-    request<AlertStats>("/alerts/stats", { signal }),
+    request<AlertStats>("/alerts/stats?provenance=analysis", { signal }),
   updateAlertStatus: (id: number, status: AlertStatus) =>
     request<Alert>(`/alerts/${id}/status`, {
       method: "PATCH",
@@ -115,9 +134,9 @@ export const api = {
     signal?: AbortSignal,
   ) =>
     request<Page<Connection>>(`/logs/connections${query(params)}`, { signal }),
-  async downloadAlertsExport(format: "csv" | "json", severity?: Severity) {
+  async downloadAlertsExport(format: "csv" | "json", severity?: Severity, provenance: Provenance = "analysis") {
     const response = await responseFor(
-      `/alerts/export${query({ format, severity })}`,
+      `/alerts/export${query({ format, severity, provenance })}`,
     );
     const url = URL.createObjectURL(await response.blob());
     const link = document.createElement("a");

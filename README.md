@@ -1,15 +1,17 @@
 # AI Network Intrusion Detection System (NIDS)
 
-An AI NIDS platform for manually importing and preparing Zeek connection metadata (`conn.log`). Durable analysis sessions track progress, source records and failures. No detector is configured: preparation does not assess traffic safety and generates no alerts. Other Zeek log types are not implemented.
+AI NIDS collects Zeek connection metadata (`conn.log`) from a remote sensor and analyzes it when an administrator requests it. The selected Random Forest classifier, trained on a published Zeek-derived CIC-IDS2017 dataset, flags suspicious connections for review. A React dashboard displays connections, findings and traceable analysis sessions. See [AI experiments, results and reproduction](ai/README.md).
 
 ---
 
 ## Features
 
-- **Replaceable AI boundary**: Typed, model-independent input and finding contracts; no model, training, inference or feature vector is selected yet.
-- **Traceable sessions**: Durable status, per-batch counts, normalized source references and future finding evidence. Existing demonstration alerts are preserved and explicitly labelled as demo history.
-- **Zeek Metadata Analysis**: Inspects session-level telemetry (duration, packet ratios, byte counts, TCP connection states such as `S0`, `REJ`, `SF`) without requiring deep packet payload decryption.
-- **Live Operations Console**: Real-time web dashboard to fetch & analyze Zeek logs from a remote sensor agent (or local simulation generator), filter alerts by severity, inspect raw network connections by protocol (`TCP`, `UDP`, `ICMP`), and manage sensor/database state.
+- **Replaceable AI boundary**: Typed input/finding contracts, shared versioned Zeek features and a locally selected classifier. Offline training compares Logistic Regression, Random Forest and Isolation Forest on TON_IoT Network and a Zeek-derived CIC-IDS2017 release.
+- **Traceable sessions**: Durable status, per-batch counts, normalized source references and finding evidence. Existing demonstration alerts are preserved and explicitly labelled as demo history.
+- **Connection classification**: Uses duration, directional byte/packet counts, protocol, detected service and connection state. Shared preprocessing preserves missing values and applies the same feature transformations during training and inference.
+- **Operations dashboard**: Refreshes stored metrics and analysis status, provides a manual fetch-and-analyze command, severity filters, paginated connection records, alert exports and database/cursor management. An explicit sample mode reads bundled demonstration records.
+- **AI review workflow**: Shows unique stored, analyzed and flagged connections, pending analysis, session counts and protocol distribution. Open a finding to inspect its model score and source connection; mark it as new, under investigation, resolved or false positive. Demo history is available separately and excluded from AI dashboard statistics.
+- **Sensor availability**: An authenticated, read-only agent health probe reports reachability, access refusal or invalid responses. Availability checks do not import logs or confirm that Zeek itself is running.
 - **Secure Authentication**: Single-admin authentication backed by `bcrypt` password hashing and `HttpOnly` JWT cookies with strict CORS protection.
 - **Fail-Fast Configuration**: Strict environment validation on both backend and frontend — missing or invalid configuration causes an immediate, descriptive startup error.
 - **Bilingual & Themeable UI**: Instant switching between Romanian and English (`ro` / `en`) and Dark / Light themes (`dark` / `light`).
@@ -22,10 +24,10 @@ An AI NIDS platform for manually importing and preparing Zeek connection metadat
 ai-network-intrusion-detection-system/
 ├── api/                          # Backend: Python + FastAPI + SQLAlchemy 2.0
 │   ├── app/
-│   │   ├── ai/                   # Model-independent preparation & replaceable detector contract
+│   │   ├── ai/                   # Shared features, replaceable detector & explicit model deployment
 │   │   ├── core/                 # Strict .env settings, JWT HttpOnly cookie security, bcrypt
 │   │   ├── database/             # Database engine, session management, initial admin seeder
-│   │   ├── integrations/         # Remote Zeek Sensor HTTP client & mock telemetry generator
+│   │   ├── integrations/         # Remote Zeek Sensor HTTP client & bundled sample reader
 │   │   ├── models/               # SQLAlchemy entities, sensor cursors & analysis-session evidence
 │   │   ├── repositories/         # Data access layer isolating database queries
 │   │   ├── routes/               # REST API controllers, including /analysis-sessions
@@ -44,9 +46,13 @@ ai-network-intrusion-detection-system/
 │   │   ├── constants.ts          # Strict environment variable validation
 │   │   └── i18n.tsx              # Centralized RO/EN translations & theme provider
 │   └── package.json
+├── ai/                           # Offline acquisition, preparation, experiments and measured reports
 ├── sensor_agent/                 # Edge Collector: Lightweight daemon running on the Zeek VM
 │   ├── collector.py              # Incremental log reader & authenticated REST API
-│   ├── install_zeek.sh           # Automated Zeek installation script for Ubuntu/Debian
+│   ├── install_zeek.sh           # Zeek installation helper; review supported OS before running
+│   ├── gateway_setup.sh          # Ubuntu VM gateway network setup
+│   ├── setup_zeek_autostart.sh    # ZeekControl systemd startup setup
+│   ├── setup_sensor_autostart.sh  # Sensor agent systemd startup setup
 │   ├── requirements.txt          # Minimal Python dependencies (FastAPI, uvicorn)
 │   └── README.md                 # Standalone setup and deployment guide for the VM
 ├── .env                          # Local environment configuration (git-ignored)
@@ -57,8 +63,8 @@ ai-network-intrusion-detection-system/
 
 ## Prerequisites
 
-- **Python** 3.11+
-- **Node.js** 20+ and **npm**
+- **Python** 3.13 recommended for the pinned AI environment
+- **Node.js** 20.19+ in the 20.x line, or 22.12+ (matching the installed Vite requirement), and **npm**
 
 ---
 
@@ -73,7 +79,8 @@ ai-network-intrusion-detection-system/
    - `ADMIN_USERNAME` / `ADMIN_PASSWORD` — Initial administrator credentials seeded at startup.
    - `DATABASE_URL` — SQLAlchemy connection string (e.g., `sqlite:///./data/nids.db` or PostgreSQL URI).
    - `CORS_ORIGINS` — JSON array of allowed frontend origins (e.g., `["http://localhost:5173","http://127.0.0.1:5173"]`).
-   - `SENSOR_MOCK_MODE` — Set to `True` to use the built-in Zeek traffic simulator, or `False` to poll a live remote Zeek VM sensor agent at `SENSOR_AGENT_URL`.
+   - `SENSOR_MOCK_MODE` — Set to `True` to read bundled demonstration records, or `False` to fetch from the remote sensor when analysis is requested. A remote failure does not switch to sample mode.
+   - `SENSOR_AGENT_URL` / `SENSOR_AGENT_API_KEY` — Sensor address and shared API key, matching the sensor's own configuration.
    - `VITE_API_BASE_URL` — Base API path used by the frontend (e.g., `/api`).
 
 ---
@@ -81,6 +88,10 @@ ai-network-intrusion-detection-system/
 ## How to Run
 
 ### 1. Start the Backend API
+
+First reproduce or transfer the selected artifact using [the AI setup guide](ai/README.md).
+The selected artifact is Git-ignored. Startup fails explicitly if an enabled model
+is missing, incompatible or has a wrong checksum; it never silently bypasses inference.
 
 Open a terminal in the `api/` directory:
 
@@ -118,33 +129,100 @@ npm run dev
 
 1. Sign in at `http://localhost:5173/login` using the administrator credentials configured in `.env`. The login form does not prefill credentials.
 2. On the **Live Dashboard** (`/dashboard`):
-   - Click **Fetch & Analyze Logs** to pull the latest Zeek connection flows from the sensor, create a session, import and normalize new records, and display session status and source connections. Detection remains explicitly unavailable until a real detector is configured.
+   - Click **Fetch & Analyze Logs** to pull the latest Zeek connection flows from the sensor, create a session, import and normalize new records, run the selected classifier, and display source connections and review findings. No analysis starts automatically.
    - Filter security alerts by severity (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) and mark investigated alerts as resolved.
    - Use **Reset sensor cursor** to restart reading existing sensor logs (the log file is not deleted) or **Reset DB** to clear stored connections, alerts and analysis history. Sensor cursors are retained until separately reset.
-3. Navigate to **Zeek Flows** (`/connections`) to inspect raw network sessions, connection states (`SF`, `S0`, `REJ`), durations, byte counts, and packet ratios filtered by protocol (`TCP`, `UDP`, `ICMP`).
+3. Navigate to **Zeek Flows** (`/connections`) to inspect stored connection metadata, connection states (`SF`, `S0`, `REJ`), durations and directional byte/packet counts, filtered by protocol (`TCP`, `UDP`, `ICMP`).
+   Select individual records or the current page, then choose **Analyze selection**
+   to run the current model on existing connections. Reanalysis creates a new
+   session and findings; unique connection totals do not grow simply because a
+   connection was analyzed again.
+4. In the dashboard's **Findings and review** feed, open **Details** for source
+   evidence and use **Status** to record your review. Manually marked false-positive
+   counts are feedback, not a measured false-positive rate or automatic retraining.
+   CSV/JSON exports follow the selected severity and finding origin.
+
+## AI training and inference
+
+- Offline experiments in `ai/` train and compare Logistic Regression, Random Forest and Isolation Forest separately on TON_IoT Network and a published five-day Zeek re-extraction of CIC-IDS2017. The two datasets are not combined in the selected model.
+- The current deployment selects `cic-endpoint_pairs-42` / `random_forest`, configured in `api/app/ai/deployment.json`. Its artifact is `api/app/ai/models/selected.joblib`.
+- Inference uses five numerical fields (`duration`, `orig_bytes`, `resp_bytes`, `orig_pkts`, `resp_pkts`) and three categorical fields (`proto`, `service`, `conn_state`). Numerical transformations and missing-value indicators are shared with training. IPs, ports, UID and absolute timestamps are not classifier inputs.
+- Findings are binary screening results labelled **Suspicious Connection**, with medium severity and source-record evidence. They do not identify a specific attack family. The stored `confidence` is an uncalibrated classifier score, not a verified attack probability.
+- Isolation Forest remains an offline anomaly experiment. Processing new traffic does not retrain the selected model; retraining and model selection are explicit offline operations.
+- [Measured results and confusion matrices](ai/reports/experiment_report.md), [machine-readable metrics](ai/reports/metrics.csv) and [reproduction, selection and transfer commands](ai/README.md) document the experiments and their limitations. Dataset results do not establish the alarm rate on a new network or performance on another computer.
+- Downloaded datasets, prepared tables and run artifacts are under the Git-ignored `.ai-workspace/` directory. Trained `.joblib` files are also ignored. `python -m ai.export`, run from the repository root in the prepared environment, packages the selected model and manifest for transfer without raw traffic or credentials.
+
 ## Platform boundaries
 
 - All alert, connection and system endpoints require an active administrator session. Login returns user and session metadata; the JWT is transmitted only in an HttpOnly cookie.
 - Set secure-cookie options appropriately for deployment over HTTPS. Local HTTP development must use an explicit compatible configuration.
 - The dashboard supports paginated alerts and connections, visible request errors, and Romanian/English themes and labels. Alert exports include all records matching the selected severity, not just the visible page.
-- `api/app/ai/engine.py` defines the detector contract. The current implementation is explicitly unconfigured and emits no findings. Replace only that implementation when a validated detector is ready; the transport and frontend do not depend on a specific model.
+- `api/app/ai/engine.py` defines the detector contract. Startup loads the explicit `api/app/ai/deployment.json` configuration. The initial classifier is a CIC Zeek Random Forest baseline; its dataset scores do not establish local-network performance. Isolation Forest remains an offline experiment and is not enabled. The transport and frontend do not depend on a specific model.
 - The VM collector discovers current JSON conn.log streams and retained gzip archives. The backend commits each file cursor together with connections and alerts in SQLite, resumes across rotation, and analyzes only new connection UIDs. Retain unread archives until ingestion. Deploy the updated backend and sensor together. See [sensor setup and recovery](sensor_agent/README.md).
 - Sensor mode describes configuration, not a live VM connectivity probe.
+- Collection currently supports JSON `conn.log` records and retained connection-log archives. DNS, HTTP, TLS and host security-event log ingestion, behavioral time windows and automatic traffic blocking are not implemented. Connection-state badges are protocol metadata, not attack verdicts.
 - Source files under `app/src/lib/` must be included when committing the frontend. Python environment directories remain ignored.
 
 ## Verification
 
-Run `npm run build` and `npm run lint` from `app/`. Validate login/logout, expired sessions, protected API requests, pagination, error recovery, exports, theme/language persistence and mobile navigation manually. No automated test suite is included.
+Logout persists an individual JWT fingerprint and expiration in `revoked_tokens`.
+Every protected request checks that table; a copied logged-out token remains
+rejected after API restart. New tokens have unique IDs, and older unexpired
+tokens can also be revoked. Expired revocations are pruned on subsequent logout.
+Revocation storage failures fail logout rather than reporting success. Restart
+the backend after updating so its normal startup applies the additive migration.
+Clearing connection/alert history does not clear token revocations.
+
+Backend unit tests live in `api/tests/unit/`. From `api/`, with the backend virtual
+environment activated, run:
+
+```sh
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+python -m pytest --cov=app --cov-branch --cov-report=term-missing
+```
+
+The suite checks authentication and cookie contracts, route authentication
+dependencies, Zeek validation, feature preparation, classifier artifact/score
+validation, sensor response contracts, UID deduplication, cursor conflicts,
+analysis transaction ordering and failure/cancellation handling, reset/clear
+guards, database-session cleanup and exports. Configuration, repositories and
+HTTP boundaries use isolated test dependencies: no real `.env`, SQL connection,
+VM, dataset or trained artifact is required. Unexpected SQL connections and
+default HTTP transports fail the test. Unit assertions about commits and
+rollbacks verify orchestration; they do not prove database durability, live
+capture quality or classifier detection quality. Production startup/configuration,
+database queries/migrations, actual HTTP routing and the complete VM flow still
+require separate integration checks. Coverage includes unexecuted namespace
+packages and is not an acceptance threshold. Test tooling is development-only.
+
+Run `npm run build` and `npm run lint` from `app/`. Validate login/logout, expired
+sessions, protected API requests, pagination, error recovery, exports,
+theme/language persistence and mobile navigation manually. No frontend automated
+test suite is included.
+
+The recorded AI integration check used 200 real held-out records and a separate
+SQLite database to verify offline/stored feature parity, API analysis and finding
+evidence. See [the verification record](ai/reports/manual_verification.json).
+Controlled VM attack/benign traffic evaluation, capture compatibility and laptop
+measurements remain to be performed for the selected model.
 
 ## Analysis architecture and API
 
-The manual path is routes -> AnalysisService -> IngestionService -> normalization
-and model-independent preparation -> detector contract -> repositories. The sensor
+The manual sensor path is routes -> AnalysisService -> IngestionService -> normalization
+and typed preparation -> shared feature extraction -> selected classifier -> findings
+and repositories. Stored-record analysis reuses selected database records. The sensor
 transport, authentication, archive discovery, UID deduplication and per-batch cursor
 commits retain their existing behavior. No background ingestion or inference runs.
 
 - `POST /api/system/fetch-and-analyze` remains the dashboard command. Its existing
   summary fields are retained and `analysis_session` is added.
+- `GET /api/system/overview` returns persisted connection/session aggregates and
+  the loaded detector identity. `GET /api/system/sensor-status` probes agent health.
+  Both endpoints require the administrator cookie.
+- Alert list, statistics and exports accept `provenance=analysis` or
+  `provenance=legacy_demo`. The dashboard requests analysis-only statistics and
+  lets users inspect demo history separately.
 - `POST /api/analysis-sessions` accepts `{"source":"sensor"}` or
   `{"source":"stored","connection_ids":[1,2]}` (1..500 existing IDs).
   Stored analysis explicitly reuses records without copying raw logs or moving cursors.
@@ -163,12 +241,13 @@ remain saved and unread batches are fetched again. There is no durable job queue
 automatic retry. Add such infrastructure only if long-running inference later needs it.
 
 `records_prepared` counts newly imported records (or explicitly selected stored IDs),
-not a security verdict. For each batch, connections, source links, future findings,
+not a security verdict. For each batch, connections, source links, findings,
 counts and cursor advancement commit together. A malformed record or failed detector
 rolls back that batch and marks the session failed; earlier committed batches survive.
-Future detectors must return typed findings referencing only their batch's connection
-IDs. Detection categories, feature vectors, time windows, datasets and model choice
-remain undecided. The existing transport batch size is not a chosen analysis window.
+Detectors must return typed findings referencing only their batch's connection
+IDs. The selected binary classifier uses shared core Zeek connection features;
+its findings do not identify attack families. Behavioral time windows remain
+unimplemented. The existing transport batch size is not a chosen analysis window.
 
 ## Database evolution
 
@@ -192,12 +271,12 @@ Files added for session-based preparation:
 
 Existing integration files updated:
 
-- `api/app/ai/engine.py`: replaceable, explicitly unconfigured detector. The old synthetic detector module `api/app/ai/detector.py` was removed.
+- `api/app/ai/engine.py`: replaceable detector boundary; `detector.py` now loads only a locally selected, hash-verified classifier. `features.py` is shared by offline fitting and inference; `deployment.json` controls startup explicitly.
 - `api/app/main.py`, `api/app/database/seed.py`, `api/migrations/env.py`, `api/app/models/__init__.py`: startup, migration registration and interruption recovery.
 - `api/app/models/alert.py`, `api/app/repositories/alert_repository.py`, `api/app/repositories/connection_repository.py`: provenance, evidence and transactional resets.
 - `api/app/schemas/alert.py`, `api/app/schemas/connection.py`, `api/app/schemas/system.py`: validation and compatible response extensions.
 - `api/app/routes/system_routes.py`, `api/app/services/system_service.py`, `api/app/services/alert_service.py`: existing command compatibility, reset safety and export provenance.
 - `app/src/components/dashboard/commands.tsx`, `app/src/components/dashboard/alerts.tsx`, `app/src/pages/dashboard.tsx`: detector availability, historical-demo labels and session integration.
 - `app/src/services/api.ts`, `app/src/services/types.ts`, `app/src/i18n.tsx`: typed API integration and RO/EN text.
-- `api/requirements.txt`: removed unused detection-library requirements; no new dependencies.
+- `api/requirements.txt`: pinned CPU inference dependencies matching the recorded training environment. Offline-only data dependencies are in `ai/requirements.txt`.
 - `README.md`: current architecture, lifecycle, API and file map.

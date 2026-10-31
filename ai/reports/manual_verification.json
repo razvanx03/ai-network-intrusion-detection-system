@@ -1,0 +1,10 @@
+{
+  "source": "200 real held-out CIC records; isolated temporary SQLite database",
+  "feature_parity_before_and_after_storage": true,
+  "records_prepared": 200,
+  "persisted_alerts": 94,
+  "cookie_auth_and_logout": true,
+  "evidence_links": true,
+  "production_database_modified": false,
+  "vm_network_validation": false
+}

@@ -1,7 +1,8 @@
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from app.core.constants import COOKIE_ACCESS_TOKEN_KEY
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, token_fingerprint
+from app.repositories.token_repository import TokenRepository
 from app.database.session import get_db
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
@@ -30,6 +31,8 @@ def get_current_user(
         )
 
     username = payload["sub"]
+    if TokenRepository(db).is_revoked(token_fingerprint(raw_token)):
+        raise HTTPException(status_code=401, detail="Authentication token revoked.")
     user_repo = UserRepository(db)
     user = user_repo.get_by_username(username)
     if not user:

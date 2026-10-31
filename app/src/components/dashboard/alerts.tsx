@@ -11,8 +11,9 @@ import {
 } from "@/components/ui/table";
 import { Pagination } from "@/components/pagination";
 import { useI18n } from "@/i18n";
-import { attackKeys } from "@/lib/display";
-import type { Alert, Page, Severity } from "@/services/types";
+import { attackKeys, descriptionKeys } from "@/lib/display";
+import type { Alert, Page, Severity, Provenance, AlertStatus } from "@/services/types";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu";
 const variants = {
   CRITICAL: "critical",
   HIGH: "high",
@@ -24,14 +25,22 @@ export function Alerts({
   severity,
   onFilter,
   onPage,
-  resolve,
+  updateStatus,
+  inspect,
+  provenance,
+  onProvenance,
+  falsePositives,
   busy,
 }: {
   page: Page<Alert>;
   severity: Severity | "";
   onFilter: (value: Severity | "") => void;
   onPage: (offset: number) => void;
-  resolve: (id: number) => void;
+  updateStatus: (id: number, status: AlertStatus) => void;
+  inspect: (alert: Alert) => void;
+  provenance: Provenance;
+  onProvenance: (value: Provenance) => void;
+  falsePositives: number;
   busy: boolean;
 }) {
   const { t } = useI18n();
@@ -39,6 +48,10 @@ export function Alerts({
     <Card>
       <CardHeader className="gap-3">
         <CardTitle>{t("feed_title")}</CardTitle>
+        <div className="flex flex-wrap gap-2" role="group" aria-label={t("finding_origin")}>
+          {(["analysis", "legacy_demo"] as const).map(value => <Button key={value} size="sm" variant={provenance === value ? "secondary" : "ghost"} aria-pressed={provenance === value} disabled={busy} onClick={() => onProvenance(value)}>{t(value === "analysis" ? "findings_model" : "legacy_demo")}</Button>)}
+        </div>
+        {provenance === "analysis" && <p className="text-xs text-muted-foreground">{t("findings_false_positive_count", { count: falsePositives })}</p>}
         <div
           className="flex flex-wrap gap-1"
           role="group"
@@ -81,7 +94,7 @@ export function Alerts({
                 <TableHead>{t("th_source")}</TableHead>
                 <TableHead>{t("th_destination")}</TableHead>
                 <TableHead>{t("th_detector")}</TableHead>
-                <TableHead>{t("th_mitre")}</TableHead>
+                <TableHead>{t("model_score")}</TableHead>
                 <TableHead>{t("th_status")}</TableHead>
                 <TableHead>{t("th_action")}</TableHead>
               </TableRow>
@@ -100,9 +113,9 @@ export function Alerts({
                       : alert.attack_type}
                     <p
                       className="mt-1 max-w-sm truncate text-xs font-normal text-muted-foreground"
-                      title={alert.description}
+                      title={descriptionKeys[alert.description] ? t(descriptionKeys[alert.description]) : alert.description}
                     >
-                      {alert.description}
+                      {descriptionKeys[alert.description] ? t(descriptionKeys[alert.description]) : alert.description}
                     </p>
                   </TableCell>
                   <TableCell className="font-mono text-xs">
@@ -117,7 +130,7 @@ export function Alerts({
                     {alert.provenance === "legacy_demo" && <Badge variant="outline">{t("legacy_demo")}</Badge>}
                     {alert.analysis_session_id && <p className="font-mono" title={alert.analysis_session_id}>{alert.analysis_session_id.slice(0, 8)}</p>}
                   </TableCell>
-                  <TableCell>{alert.mitre_technique ?? "—"}</TableCell>
+                  <TableCell className="tabular-nums" title={t("model_score_help")}>{alert.confidence.toFixed(3)}</TableCell>
                   <TableCell>
                     <Badge
                       variant={
@@ -128,16 +141,14 @@ export function Alerts({
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {alert.status !== "RESOLVED" && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={busy}
-                        onClick={() => resolve(alert.id)}
-                      >
-                        {t("btn_resolve")}
-                      </Button>
-                    )}
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => inspect(alert)} aria-label={t("finding_inspect", { id: alert.id })}>{t("finding_details")}</Button>
+                      <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" disabled={busy} aria-label={t("finding_change_status", { id: alert.id })}>{t("th_status")}</Button></DropdownMenuTrigger>
+                        <DropdownMenuContent align="end"><DropdownMenuRadioGroup value={alert.status} onValueChange={value => updateStatus(alert.id, value as AlertStatus)}>
+                          {(["NEW", "ACKNOWLEDGED", "RESOLVED", "FALSE_POSITIVE"] as const).map(status => <DropdownMenuRadioItem key={status} value={status}>{t(`status_${status}`)}</DropdownMenuRadioItem>)}
+                        </DropdownMenuRadioGroup></DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
