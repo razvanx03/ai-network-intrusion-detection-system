@@ -14,14 +14,16 @@ pyjwt>=2.10.0
 bcrypt>=4.2.0
 python-multipart>=0.0.19
 
-# Machine Learning & Data Processing
-scikit-learn>=1.6.0
-pandas>=2.2.0
-numpy>=2.2.0
-joblib>=1.4.0
-
 # HTTP Client (for Sensor Agent communications)
 httpx>=0.28.0
 
 # Environment Management
 python-dotenv>=1.0.1
+
+# AI inference: match the recorded training environment and transferred artifacts.
+numpy==2.5.4
+pandas==3.0.6
+scikit-learn==1.9.1
+joblib==1.6.0
+scipy==1.18.1
+threadpoolctl==3.7.0

@@ -12,17 +12,23 @@ import { LoadingOrb } from "@/components/ui/loading-orb";
 import { useDashboard } from "@/hooks/use-dashboard";
 import { useI18n } from "@/i18n";
 import { api } from "@/services/api";
-import type { Severity } from "@/services/types";
+import type { Severity, Provenance, AlertStatus, Alert } from "@/services/types";
+import { SystemStatus } from "@/components/dashboard/system-status";
+import { FindingDetails } from "@/components/dashboard/finding-details";
+import { AnalysisSessions } from "@/components/dashboard/analysis-sessions";
 const Charts = lazy(() => import("@/components/dashboard/charts"));
 export default function DashboardPage() {
   const { t } = useI18n();
   const [severity, setSeverity] = useState<Severity | "">("");
   const [offset, setOffset] = useState(0);
+  const [provenance, setProvenance] = useState<Provenance>("analysis");
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [selectedFinding, setSelectedFinding] = useState<Alert | null>(null);
   const [busy, setBusy] = useState<Command | null>(null);
   const locked = useRef(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const resource = useDashboard(severity, offset);
-  const run = async (command: Command, id?: number) => {
+  const resource = useDashboard(severity, offset, provenance);
+  const run = async (command: Command, id?: number, status: AlertStatus = "RESOLVED") => {
     if (locked.current) return;
     locked.current = true;
     setBusy(command);
@@ -31,10 +37,11 @@ export default function DashboardPage() {
       if (command === "analyze") {
         const result = await api.fetchAndAnalyze();
         setNotice({
-          key: "analysis_done",
+          key: result.analysis_session.detector_status === "not_configured" ? "analysis_prepared" : "analysis_done",
           params: {
             conns: result.new_connections_ingested,
             alerts: result.new_alerts_detected,
+            prepared: result.analysis_session.records_prepared,
           },
         });
       } else if (command === "sensor") {
@@ -50,17 +57,21 @@ export default function DashboardPage() {
           },
         });
         setOffset(0);
+        setSelectedFinding(null);
       } else if (command === "resolve" && id !== undefined) {
-        await api.updateAlertStatus(id, "RESOLVED");
-        setNotice({ key: "alert_resolved" });
+        const updated = await api.updateAlertStatus(id, status);
+        if (selectedFinding?.id === id) setSelectedFinding(updated);
+        setNotice({ key: "alert_status_updated" });
       } else if (command === "csv" || command === "json") {
-        await api.downloadAlertsExport(command, severity || undefined);
+        await api.downloadAlertsExport(command, severity || undefined, provenance);
       }
-      if (command === "clear" && offset !== 0) return;
-      if (command !== "csv" && command !== "json") await resource.refresh();
     } catch (error) {
       setNotice({ key: errorKey(error), error: true });
     } finally {
+      if (command !== "csv" && command !== "json") {
+        if (command === "analyze" || command === "clear") setHistoryVersion(value => value + 1);
+        await resource.refresh();
+      }
       locked.current = false;
       setBusy(null);
     }
@@ -69,6 +80,8 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <Commands
         busy={busy}
+        detectorStatus={resource.data?.health.detector_status}
+        running={!!resource.data?.overview.running_session_id}
         run={(command) => {
           void run(command);
         }}
@@ -84,12 +97,17 @@ export default function DashboardPage() {
       />
       {resource.data && (
         <>
+          {resource.data.health.legacy_alerts_total > 0 && (
+            <p className="text-sm text-muted-foreground">{t("legacy_demo_notice", { count: resource.data.health.legacy_alerts_total })}</p>
+          )}
           <Metrics
             stats={resource.data.stats}
-            connections={resource.data.health.connections_total}
+            overview={resource.data.overview}
           />
+          <SystemStatus health={resource.data.health} overview={resource.data.overview} />
+          <AnalysisSessions key={historyVersion} inspect={setSelectedFinding} />
           <Suspense fallback={<LoadingOrb text={t("loading")} />}>
-            <Charts stats={resource.data.stats} />
+            <Charts stats={resource.data.stats} protocols={resource.data.overview.protocols} />
           </Suspense>
           <Alerts
             page={resource.data.alerts}
@@ -100,10 +118,15 @@ export default function DashboardPage() {
             }}
             onPage={setOffset}
             busy={!!busy || resource.loading}
-            resolve={(id) => {
-              void run("resolve", id);
+            provenance={provenance}
+            onProvenance={(value) => { setProvenance(value); setOffset(0); setSelectedFinding(null); }}
+            falsePositives={resource.data.stats.false_positive_count}
+            inspect={setSelectedFinding}
+            updateStatus={(id, status) => {
+              void run("resolve", id, status);
             }}
           />
+          {selectedFinding && <FindingDetails key={selectedFinding.id} alert={selectedFinding} close={() => setSelectedFinding(null)} />}
         </>
       )}
     </div>

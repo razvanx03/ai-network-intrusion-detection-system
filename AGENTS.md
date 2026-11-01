@@ -6,9 +6,9 @@ This file defines coding standards and architectural principles for AI agents wo
 
 ## 1. Testing Policy (Strict Rule)
 
-* **No Unit Tests:** Do NOT write unit tests, integration test suites, mock test files, or test directories on either the backend or the frontend (no `test_*.py`, no `tests/`, no `*.test.tsx`, no `*.spec.ts`, no `pytest`, no `vitest`/`jest`).
-* If any unit test files are generated, they must be removed immediately.
-* Focus all engineering efforts exclusively on feature implementation, core business logic, AI pipelines, and dashboard UI.
+* **Backend Unit Tests:** The user explicitly authorized backend unit tests. Keep them under `api/tests/unit/`, using pytest and development dependencies from `api/requirements-dev.txt`. Preserve and maintain this suite.
+* **Isolation:** Unit tests must not load the real `.env`, open the application database, contact VM agents, or depend on downloaded datasets or deployed model artifacts. Use explicit test configuration and simulated boundary dependencies.
+* **Scope:** Do not introduce frontend tests or integration suites unless requested. Focus backend tests on observable business behavior, validation, authentication, AI inference contracts, ingestion progress and failure handling.
 
 ---
 

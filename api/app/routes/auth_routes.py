@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.constants import AUTH_ROUTE_PREFIX, COOKIE_ACCESS_TOKEN_KEY
@@ -38,8 +38,9 @@ def login(login_data: LoginRequest, response: Response, db: Session = Depends(ge
 
 
 @router.post("/logout")
-def logout(response: Response):
-    """Clear HttpOnly authentication cookie."""
+def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    """Durably revoke the presented token before clearing its cookie."""
+    AuthService(db).revoke_token(request.cookies.get(COOKIE_ACCESS_TOKEN_KEY))
     response.delete_cookie(
         key=COOKIE_ACCESS_TOKEN_KEY,
         httponly=True,

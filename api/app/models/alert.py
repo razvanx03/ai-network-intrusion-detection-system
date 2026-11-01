@@ -9,6 +9,12 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    analysis_session_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("analysis_sessions.id", ondelete="SET NULL"), index=True, nullable=True,
+    )
+    provenance: Mapped[str] = mapped_column(
+        String(16), default="analysis", server_default="legacy_demo", nullable=False,
+    )
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

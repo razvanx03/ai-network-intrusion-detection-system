@@ -5,20 +5,20 @@ from pydantic import BaseModel, Field, model_validator
 
 class ZeekLogItem(BaseModel):
     """Schema for parsing incoming raw Zeek conn.log JSON objects."""
-    uid: str
-    ts: float
-    src_ip: str = Field(alias="id.orig_h")
-    src_port: int = Field(alias="id.orig_p")
-    dst_ip: str = Field(alias="id.resp_h")
-    dst_port: int = Field(alias="id.resp_p")
-    proto: str
+    uid: str = Field(min_length=1, max_length=64)
+    ts: float = Field(ge=0, allow_inf_nan=False)
+    src_ip: str = Field(alias="id.orig_h", min_length=1, max_length=45)
+    src_port: int = Field(alias="id.orig_p", ge=0, le=65535)
+    dst_ip: str = Field(alias="id.resp_h", min_length=1, max_length=45)
+    dst_port: int = Field(alias="id.resp_p", ge=0, le=65535)
+    proto: str = Field(min_length=1, max_length=16)
     service: Optional[str] = None
-    duration: Optional[float] = 0.0
-    orig_bytes: Optional[int] = 0
-    resp_bytes: Optional[int] = 0
+    duration: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    orig_bytes: Optional[int] = Field(default=None, ge=0)
+    resp_bytes: Optional[int] = Field(default=None, ge=0)
     conn_state: Optional[str] = None
-    orig_pkts: Optional[int] = 0
-    resp_pkts: Optional[int] = 0
+    orig_pkts: Optional[int] = Field(default=None, ge=0)
+    resp_pkts: Optional[int] = Field(default=None, ge=0)
     history: Optional[str] = None
 
     @model_validator(mode="before")
@@ -26,6 +26,7 @@ class ZeekLogItem(BaseModel):
     def normalize_keys_and_values(cls, data: dict):
         if not isinstance(data, dict):
             return data
+        data = data.copy()
         
         # Support both 'id.orig_h' (Zeek) and 'src_ip' (internal)
         if "id.orig_h" not in data and "src_ip" in data:
@@ -40,7 +41,7 @@ class ZeekLogItem(BaseModel):
         # Zeek logs often use "-" for null or missing values
         for key in ["duration", "orig_bytes", "resp_bytes", "orig_pkts", "resp_pkts"]:
             if data.get(key) == "-":
-                data[key] = 0
+                data[key] = None
         for key in ["service", "conn_state", "history"]:
             if data.get(key) == "-":
                 data[key] = None

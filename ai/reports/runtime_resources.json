@@ -1,0 +1,10 @@
+{
+  "rows": 500,
+  "model_load_seconds": 0.21063739992678165,
+  "median_batch_ms": 28.04754994576797,
+  "peak_process_rss_bytes": 285216768,
+  "platform": "Windows-11-10.0.26300-SP0",
+  "notes": "Fresh process includes imports, model and heldout table; CPU timing on this host only.",
+  "selected_artifact_bytes": 1736913,
+  "finite_scores": true
+}

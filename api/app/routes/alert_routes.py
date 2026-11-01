@@ -1,5 +1,5 @@
 from app.routes.deps import get_current_user
-from typing import Optional
+from typing import Optional, Literal
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.constants import VALID_ALERT_STATUSES, ALERT_ROUTE_PREFIX
@@ -16,6 +16,7 @@ def get_alerts(
     attack_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None, description="NEW, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE"),
     src_ip: Optional[str] = Query(None),
+    provenance: Literal["analysis", "legacy_demo"] | None = Query(None),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
@@ -23,6 +24,7 @@ def get_alerts(
     """List intrusion detection alerts with filtering and pagination."""
     service = AlertService(db)
     filters = AlertFilter(
+        provenance=provenance,
         severity=severity,
         attack_type=attack_type,
         status=status,
@@ -40,30 +42,31 @@ def get_alerts(
 
 
 @router.get("/stats", response_model=AlertStatsResponse)
-def get_alert_stats(db: Session = Depends(get_db)):
+def get_alert_stats(provenance: Literal["analysis", "legacy_demo"] | None = Query(None), db: Session = Depends(get_db)):
     """Aggregate statistics for alerts dashboard (counts, severities, top attack types)."""
     service = AlertService(db)
-    return service.get_stats()
+    return service.get_stats(provenance)
 
 
 @router.get("/export")
 def export_alerts(
     format: str = Query("csv", pattern="^(csv|json)$"),
     severity: Optional[str] = Query(None),
+    provenance: Literal["analysis", "legacy_demo"] | None = Query(None),
     db: Session = Depends(get_db)
 ):
     """Export alerts as CSV or JSON report for incident response and auditing."""
     from fastapi.responses import Response, JSONResponse
     service = AlertService(db)
     if format == "csv":
-        csv_content = service.export_alerts_csv(severity)
+        csv_content = service.export_alerts_csv(severity, provenance)
         return Response(
             content=csv_content,
             media_type="text/csv",
             headers={"Content-Disposition": "attachment; filename=nids_alerts_report.csv"}
         )
     else:
-        json_content = service.export_alerts_json(severity)
+        json_content = service.export_alerts_json(severity, provenance)
         return JSONResponse(
             content=json_content,
             headers={"Content-Disposition": "attachment; filename=nids_alerts_report.json"}

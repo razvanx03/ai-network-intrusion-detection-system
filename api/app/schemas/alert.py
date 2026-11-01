@@ -1,12 +1,14 @@
-from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel
+from datetime import datetime, timezone
+from typing import Optional, List, Literal
+from pydantic import BaseModel, field_validator
 
 
 class AlertResponse(BaseModel):
     id: int
     timestamp: datetime
     connection_id: Optional[int] = None
+    analysis_session_id: Optional[str] = None
+    provenance: str
     src_ip: str
     dst_ip: str
     dst_port: Optional[int] = None
@@ -19,6 +21,11 @@ class AlertResponse(BaseModel):
     status: str
     created_at: datetime
 
+    @field_validator("timestamp", "created_at")
+    @classmethod
+    def utc_dates(cls, value: datetime) -> datetime:
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
     class Config:
         from_attributes = True
 
@@ -28,6 +35,7 @@ class AlertStatusUpdate(BaseModel):
 
 
 class AlertFilter(BaseModel):
+    provenance: Literal["analysis", "legacy_demo"] | None = None
     severity: Optional[str] = None
     attack_type: Optional[str] = None
     status: Optional[str] = None
@@ -37,6 +45,7 @@ class AlertFilter(BaseModel):
 
 
 class AlertStatsResponse(BaseModel):
+    false_positive_count: int
     total_alerts: int
     critical_count: int
     high_count: int

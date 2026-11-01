@@ -1,43 +1,34 @@
-import { ShieldAlert, Flame, AlertTriangle, Server } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useI18n } from "@/i18n";
-import type { AlertStats } from "@/services/types";
+import type { AlertStats, Overview } from "@/services/types";
 export function Metrics({
   stats,
-  connections,
+  overview,
 }: {
   stats: AlertStats;
-  connections: number;
+  overview: Overview;
 }) {
   const { t } = useI18n();
   const cards = [
     {
-      label: t("stats_total_alerts"),
-      value: stats.total_alerts,
-      detail: `${stats.unresolved_count} ${t("stats_unresolved")}`,
-      icon: ShieldAlert,
-      color: "text-primary",
-    },
-    {
-      label: t("stats_critical"),
-      value: stats.critical_count,
-      detail: t("stats_critical_sub"),
-      icon: Flame,
-      color: "text-critical",
-    },
-    {
-      label: t("stats_high"),
-      value: stats.high_count,
-      detail: t("stats_high_sub"),
-      icon: AlertTriangle,
-      color: "text-high",
-    },
-    {
       label: t("stats_connections"),
-      value: connections,
+      value: overview.connections_total,
       detail: t("stats_connections_sub"),
-      icon: Server,
-      color: "text-low",
+    },
+    {
+      label: t("stats_analyzed"),
+      value: overview.analyzed_connections,
+      detail: t("stats_pending", { count: overview.pending_connections }),
+    },
+    {
+      label: t("stats_flagged"),
+      value: overview.flagged_connections,
+      detail: t("stats_review_pending", { count: stats.unresolved_count }),
+    },
+    {
+      label: t("stats_sessions"),
+      value: overview.sessions_total,
+      detail: t("stats_session_breakdown", { completed: overview.completed_sessions, failed: overview.failed_sessions }),
     },
   ];
   return (
@@ -47,9 +38,8 @@ export function Metrics({
           <CardContent className="space-y-1 p-4">
             <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
               <span>{card.label}</span>
-              <card.icon className={`size-4 ${card.color}`} />
             </div>
-            <div className={`text-2xl font-bold tabular-nums ${card.color}`}>
+            <div className="text-2xl font-semibold tabular-nums">
               {card.value}
             </div>
             <p className="text-xs text-muted-foreground">{card.detail}</p>

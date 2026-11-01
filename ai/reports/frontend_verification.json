@@ -1,0 +1,34 @@
+{
+  "verification_date": "2026-10-22",
+  "environment": "Isolated SQLite copy; production database unchanged",
+  "source_records": 200,
+  "browser_stored_analysis": {
+    "selected_connections": 100,
+    "findings": 77,
+    "session_completed": true
+  },
+  "api_checks": [
+    "unauthenticated overview refused",
+    "unique connection/session aggregates",
+    "finding provenance filtering",
+    "manual false-positive update and count",
+    "finding source evidence",
+    "filtered JSON export",
+    "explicit sensor unreachable result"
+  ],
+  "browser_checks": [
+    "stored selection and analysis",
+    "session history and counts",
+    "finding details and source metadata",
+    "manual false-positive feedback persisted",
+    "RO/EN reactive labels",
+    "dark/light desktop/mobile layouts",
+    "no document horizontal overflow at mobile width",
+    "remote sensor failure shown with failed session and updated counters"
+  ],
+  "agent_status": "unreachable; VMs were stopped",
+  "live_vm_capture_validated": false,
+  "frontend_build": "passed; existing bundle size warning",
+  "frontend_lint": "passed",
+  "automated_test_files_created": false
+}

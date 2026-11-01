@@ -6,13 +6,14 @@ from app.database.base import Base
 from app.database.session import engine, SessionLocal
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.database.schema import ensure_schema
 
 logger = logging.getLogger("nids.seed")
 
 
 def init_db(db: Session) -> None:
     """Create all tables and seed the initial single admin user if missing."""
-    Base.metadata.create_all(bind=engine)
+    ensure_schema(engine)
 
     user_repo = UserRepository(db)
     existing_admin = user_repo.get_by_username(settings.ADMIN_USERNAME)
