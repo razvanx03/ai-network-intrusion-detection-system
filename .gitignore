@@ -61,6 +61,11 @@ app/.vite/
 
 # Downloaded traffic, prepared datasets and local experiment artifacts
 /.ai-workspace/
+# Raw packet captures must not be published accidentally outside the workspace.
+*.pcap
+*.pcapng
+*.pcap.gz
+*.pcapng.gz
 
 # IDEs & Operating Systems
 .idea/

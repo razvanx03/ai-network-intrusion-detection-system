@@ -1,5 +1,27 @@
 # Connection AI experiments
 
+The CIC follow-up adds independently extracted CSE-CIC-IDS2018 subsets,
+an exploratory CIC-DDoS2019 derivative check, and controlled live VM validation.
+See [`reports/live_cic_report.md`](reports/live_cic_report.md) for the measured
+comparison, capture-quality issue, access limits, and reproduction commands;
+[`reports/live_cic_comparison.json`](reports/live_cic_comparison.json) contains
+all candidate metrics. The selected deployment remains unchanged. Newer source
+dates alone do not establish better transfer or reliable load detection.
+
+The source/feature extension study compares the existing CIC baseline with
+official UWF-ZeekData24 partitions and a selected CTU-SME-11 subset. See
+[`reports/extension_report.md`](reports/extension_report.md) for measured results,
+selection limits and reproduction commands. `study_acquire.py`,
+`study_prepare.py`, `study_experiment.py` and `study_report.py` implement this
+separate offline workflow. Its downloads and candidate models stay under the
+Git-ignored `.ai-workspace/extension/`; none is automatically deployed.
+
+The study separates source changes from feature changes: original connection
+inputs, derived ratios/rates, and directional Zeek history indicators. Frozen
+cross-source holdouts, whole-day diagnostics and a CTU device-holdout check
+challenge native-dataset scores. The current runtime feature contract remains
+unchanged unless a candidate is explicitly selected and integrated.
+
 Offline preparation and training live in `ai/`. Shared feature extraction and
 inference live in `api/app/ai/`. No training, downloading, ingestion or scheduled
 analysis is triggered by starting the API. Inference still requires the existing

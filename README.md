@@ -51,7 +51,7 @@ ai-network-intrusion-detection-system/
 │   ├── collector.py              # Incremental log reader & authenticated REST API
 │   ├── install_zeek.sh           # Zeek installation helper; review supported OS before running
 │   ├── gateway_setup.sh          # Ubuntu VM gateway network setup
-│   ├── setup_zeek_autostart.sh    # ZeekControl systemd startup setup
+│   ├── setup_zeek_autostart.sh    # ZeekControl startup and capture preparation
 │   ├── setup_sensor_autostart.sh  # Sensor agent systemd startup setup
 │   ├── requirements.txt          # Minimal Python dependencies (FastAPI, uvicorn)
 │   └── README.md                 # Standalone setup and deployment guide for the VM
@@ -204,8 +204,11 @@ test suite is included.
 The recorded AI integration check used 200 real held-out records and a separate
 SQLite database to verify offline/stored feature parity, API analysis and finding
 evidence. See [the verification record](ai/reports/manual_verification.json).
-Controlled VM attack/benign traffic evaluation, capture compatibility and laptop
-measurements remain to be performed for the selected model.
+Controlled VM traffic and additional CIC-source comparisons are documented in
+[the follow-up report](ai/reports/live_cic_report.md). The selected model remains
+unchanged: the measured scan detection does not establish reliable DoS/DDoS detection.
+The Zeek autostart setup now prepares and verifies capture offloads on `enp0s8`
+before every start, including boot; routing and NAT are unaffected.
 
 ## Analysis architecture and API
 

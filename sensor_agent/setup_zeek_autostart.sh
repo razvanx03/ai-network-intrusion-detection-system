@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run INSIDE the Ubuntu VM after installing and deploying Zeek:
 #   sudo bash setup_zeek_autostart.sh
-# This configures startup only; it never installs Zeek or changes its policies.
+# Configures startup and capture offloads; never installs Zeek or changes policies.
 set -Eeuo pipefail
 umask 077
 export LC_ALL=C
@@ -12,6 +12,7 @@ readonly NODE_CONFIG=/opt/zeek/etc/node.cfg
 readonly ZEEKCTL_SCRIPTS=/opt/zeek/share/zeekctl/scripts
 readonly UNIT_PATH=/etc/systemd/system/zeek.service
 readonly SERVICE=zeek.service
+readonly CAPTURE_HELPER=/usr/local/sbin/nids-zeek-capture
 work_dir=''
 backup_path=''
 
@@ -19,7 +20,7 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 cleanup() {
     if [[ -n "$work_dir" && -d "$work_dir" ]]; then
         # Only this invocation's private temporary directory is removed.
-        rm -f -- "$work_dir/zeek.service"
+        rm -f -- "$work_dir/zeek.service" "$work_dir/nids-zeek-capture"
         rmdir -- "$work_dir"
     fi
 }
@@ -36,6 +37,7 @@ source /etc/os-release
 for tool in systemctl python3 ip pgrep flock mktemp cmp install cp timeout; do
     command -v "$tool" >/dev/null || die "Required command is missing: $tool"
 done
+command -v ethtool >/dev/null || die 'ethtool is required. Install it with: sudo apt-get install ethtool'
 [[ -x "$ZEEKCTL" && -x /opt/zeek/bin/zeek ]] || die 'Zeek and ZeekControl must already be installed in /opt/zeek.'
 [[ -r "$NODE_CONFIG" ]] || die "Missing or unreadable $NODE_CONFIG."
 # These paths were checked against the installed ZeekControl 9.0 package.
@@ -82,6 +84,7 @@ ip link show dev enp0s8 >/dev/null || die 'Capture interface enp0s8 does not exi
 
 # Do not silently override masks, aliases or service drop-ins.
 [[ ! -L "$UNIT_PATH" ]] || die "$UNIT_PATH is a symlink or mask; review it manually."
+[[ ! -L "$CAPTURE_HELPER" ]] || die "$CAPTURE_HELPER is a symlink; review it manually."
 drop_ins="$(systemctl show "$SERVICE" --property=DropInPaths --value)"
 [[ -z "$drop_ins" ]] || die "Existing service overrides must be reviewed first: $drop_ins"
 active_state="$(systemctl show "$SERVICE" --property=ActiveState --value)"
@@ -101,7 +104,8 @@ cat > "$work_dir/zeek.service" <<'UNIT'
 [Unit]
 Description=Zeek standalone network monitor managed by ZeekControl
 Wants=network-online.target
-After=network-online.target
+Requires=sys-subsystem-net-devices-enp0s8.device
+After=network-online.target sys-subsystem-net-devices-enp0s8.device
 
 [Service]
 Type=oneshot
@@ -110,6 +114,7 @@ User=root
 WorkingDirectory=/opt/zeek
 Environment=PATH=/opt/zeek/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStartPre=/usr/bin/test -d /sys/class/net/enp0s8
+ExecStartPre=/usr/local/sbin/nids-zeek-capture
 ExecStart=/opt/zeek/bin/zeekctl start
 ExecStop=/opt/zeek/bin/zeekctl stop
 # ZeekControl may archive logs asynchronously after stop returns. Wait before
@@ -125,7 +130,51 @@ KillMode=control-group
 WantedBy=multi-user.target
 UNIT
 
+# Keep packet checksums and segmentation valid at the point where Zeek sees
+# them. This runs before EVERY systemd start, including after a reboot.
+# Fail rather than start a monitor with silently incomplete capture settings.
+cat > "$work_dir/nids-zeek-capture" <<'CAPTURE'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+export LC_ALL=C
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+[[ $EUID -eq 0 ]] || { echo 'Capture preparation requires root.' >&2; exit 1; }
+[[ -d /sys/class/net/enp0s8 ]] || { echo 'Capture interface enp0s8 is absent.' >&2; exit 1; }
+ethtool -K enp0s8 tx off tso off gso off gro off lro off
+features="$(ethtool -k enp0s8)"
+python3 - "$features" <<'PY'
+import sys
+
+features = {}
+for line in sys.argv[1].splitlines():
+    if line and not line[0].isspace() and ": " in line:
+        name, value = line.split(": ", 1)
+        features[name] = value.split()[0]
+required = ("tx-checksumming", "tcp-segmentation-offload",
+            "generic-segmentation-offload", "generic-receive-offload",
+            "large-receive-offload")
+invalid = {name: features.get(name, "not reported")
+           for name in required if features.get(name) != "off"}
+if invalid:
+    sys.exit(f"Capture offload verification failed on enp0s8: {invalid}")
+print("Verified enp0s8: TX checksum, TSO, GSO, GRO and LRO off; Zeek checksum validation unchanged.")
+PY
+CAPTURE
+
 existing_fragment="$(systemctl show "$SERVICE" --property=FragmentPath --value)"
+# Validate the upgrade before writing either installed file.
+if [[ "$active_state" == active ]] && ! cmp -s "$work_dir/zeek.service" "$UNIT_PATH"; then
+    die 'An active service has a different definition. Run sudo systemctl stop zeek.service, then rerun this setup.'
+fi
+if [[ -f "$CAPTURE_HELPER" ]] && ! cmp -s "$work_dir/nids-zeek-capture" "$CAPTURE_HELPER"; then
+    helper_backup="${CAPTURE_HELPER}.backup.$(date -u +%Y%m%dT%H%M%SZ).$$"
+    cp -p -- "$CAPTURE_HELPER" "$helper_backup"
+    cmp -s "$CAPTURE_HELPER" "$helper_backup" || die 'Capture helper backup verification failed.'
+    printf 'Capture helper backup: %s\n' "$helper_backup"
+fi
+if [[ ! -f "$CAPTURE_HELPER" ]] || ! cmp -s "$work_dir/nids-zeek-capture" "$CAPTURE_HELPER"; then
+    install -o root -g root -m 0755 "$work_dir/nids-zeek-capture" "$CAPTURE_HELPER"
+fi
 if [[ -f "$UNIT_PATH" ]] && cmp -s "$work_dir/zeek.service" "$UNIT_PATH"; then
     printf 'The service file is already up to date.\n'
 else
@@ -148,6 +197,8 @@ fi
 
 systemctl daemon-reload
 systemctl enable "$SERVICE"
+# Also enforce settings on a healthy rerun, without restarting its Zeek process.
+"$CAPTURE_HELPER"
 
 # RemainAfterExit can say active even after Zeek crashes. Rerunning this helper
 # repairs that stale state; a healthy service is left running without restart.
@@ -207,7 +258,8 @@ PY
 cat <<'MESSAGE'
 
 SUCCESS: Zeek is running and zeek.service is enabled for future boots.
-No reboot was performed. Zeek policies and network settings were not changed.
+No reboot was performed. Zeek policies, routing, NAT and interface addresses were not changed.
+Capture offloads on enp0s8 are disabled before every Zeek start, including boot.
 
 IMPORTANT: Type=oneshot with RemainAfterExit=yes does not monitor Zeek after
 startup. systemd can still report active (exited) if Zeek later crashes.
@@ -219,6 +271,7 @@ After your next manual reboot, run:
   sudo systemctl status zeek.service --no-pager
   sudo /opt/zeek/bin/zeekctl status
   pgrep -a -x zeek
+  sudo ethtool -k enp0s8
   sudo journalctl -b -u zeek.service --no-pager
 
 For subsequent manual lifecycle operations, use:

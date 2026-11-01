@@ -24,7 +24,7 @@ def artifact(tmp_path, monkeypatch):
     path.write_bytes(b"unit-artifact-placeholder")
     manifest = {"enabled": True, "artifact": "models/unit.joblib",
                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-    model = SimpleNamespace(classes_=np.array([0, 1]), predict_proba=MagicMock())
+    model = SimpleNamespace(classes_=np.array([0, 1]), predict_proba=MagicMock(), set_params=MagicMock())
     bundle = {
         "versions": {"sklearn": sklearn.__version__, "numpy": np.__version__,
                      "pandas": pd.__version__, "joblib": joblib.__version__},
@@ -50,6 +50,7 @@ def test_threshold_boundary_and_findings_preserve_evidence(artifact, connection_
     assert all(finding.attack_type == "Suspicious Connection" for finding in findings)
     assert tuple(model.predict_proba.call_args.args[0].columns) == FEATURE_COLUMNS
     assert classifier.name == "random_forest_unit"
+    model.set_params.assert_called_once_with(model__n_jobs=1)
     loader.assert_called_once()
 
 

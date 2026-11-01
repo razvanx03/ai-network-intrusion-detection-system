@@ -58,7 +58,16 @@ For Zeek itself on Ubuntu 24.04, after configuring standalone capture on `enp0s8
 run `sudo bash setup_zeek_autostart.sh`. It creates/enables `zeek.service` through
 ZeekControl, backs up an existing unit, and verifies the node process and service
 cgroup. If Zeek already runs outside the service, stop it before rerunning.
-The helper does not reboot or change network settings or Zeek policies. Its two
+The setup also installs `/usr/local/sbin/nids-zeek-capture`. `ExecStartPre` runs it
+before every Zeek start, including boot: TX checksum offloading, TSO, GSO, GRO
+and LRO are disabled on `enp0s8` and verified with `ethtool`. This prevents Zeek
+from discarding outgoing packets with unfinished checksums or seeing coalesced
+packets. Zeek checksum validation stays enabled. `install_zeek.sh` installs the
+required `ethtool` package; an existing installation needs it available too.
+When upgrading an older active unit, first run `sudo systemctl stop zeek.service`,
+then rerun the setup. A healthy rerun with the same unit reapplies offload flags
+without restarting Zeek. The interface device is an explicit startup dependency.
+The helper does not reboot or change routing, NAT, addresses or Zeek policies. Its two
 sequential stop commands stop capture, then wait for background archive helpers.
 The oneshot unit manages boot/shutdown, not continuous crash recovery:
 `active (exited)` alone is not proof that Zeek is capturing. Check

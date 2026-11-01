@@ -41,6 +41,10 @@ class ConnectionClassifier:
         if not np.isfinite(threshold) or threshold < 0 or threshold > 1:
             raise ValueError("Classifier threshold must be finite and within [0, 1]")
         self.model = bundle["model"]
+        if bundle["kind"] == "random_forest":
+            # Parallel floating-point summation can change a tied probability
+            # by one ULP and flip the comparison at the calibrated threshold.
+            self.model.set_params(model__n_jobs=1)
         if not np.array_equal(self.model.classes_, [0, 1]):
             raise ValueError("Selected classifier must use class order [benign=0, attack=1]")
         self.threshold = threshold

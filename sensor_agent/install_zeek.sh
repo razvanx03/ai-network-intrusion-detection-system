@@ -146,7 +146,7 @@ backup_path /usr/local/bin/zeekctl zeekctl-link
 STAGE="installing prerequisites"
 echo "[1/5] Installing prerequisites..."
 sudo apt-get update
-sudo apt-get install -y curl gpg ca-certificates
+sudo apt-get install -y curl gpg ca-certificates ethtool
 
 STAGE="configuring repository"
 echo "[2/5] Configuring the Zeek repository..."
