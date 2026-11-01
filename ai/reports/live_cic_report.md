@@ -123,7 +123,7 @@ Zero alarms on 284 correlated benign connections is not a zero-risk estimate. Th
 
 ## Capture deployment follow-up (1 November 2026)
 
-The updated `sensor_agent/setup_zeek_autostart.sh` installs `/usr/local/sbin/nids-zeek-capture` and invokes it through `zeek.service` ExecStartPre. It disables and verifies TX checksum offloading, TSO, GSO, GRO and LRO on enp0s8 before every start. The interface device is a startup dependency. Zeek policies, checksum validation, NAT, forwarding and interface addresses are unchanged. The old unit is backed up before replacement; `install_zeek.sh` includes ethtool for future installations.
+The deployment follow-up used the then-separate Zeek autostart helper to install `/usr/local/sbin/nids-zeek-capture`, invoked through `zeek.service` ExecStartPre. It disables and verifies TX checksum offloading, TSO, GSO, GRO and LRO before every start, with the interface device as a startup dependency. The recorded change left policies, checksum validation, NAT, forwarding and addresses unchanged. These setup responsibilities have subsequently been consolidated into `sensor_agent/setup_vm.sh`; see `sensor_agent/README.md` for the current one-command installation. This historical benchmark did not execute the newer combined installer.
 
 Applied on Ubuntu and verified after an actual reboot: Zeek and the sensor service start automatically, all five offload features remain off, and the journal confirms capture preparation precedes ZeekControl startup. A healthy setup rerun preserves the existing Zeek PID. This permanent setup change is separate from the already-recorded benchmark measurements and does not change the selected model.
 

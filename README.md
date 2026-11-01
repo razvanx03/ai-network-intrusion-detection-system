@@ -49,10 +49,7 @@ ai-network-intrusion-detection-system/
 ├── ai/                           # Offline acquisition, preparation, experiments and measured reports
 ├── sensor_agent/                 # Edge Collector: Lightweight daemon running on the Zeek VM
 │   ├── collector.py              # Incremental log reader & authenticated REST API
-│   ├── install_zeek.sh           # Zeek installation helper; review supported OS before running
-│   ├── gateway_setup.sh          # Ubuntu VM gateway network setup
-│   ├── setup_zeek_autostart.sh    # ZeekControl startup and capture preparation
-│   ├── setup_sensor_autostart.sh  # Sensor agent systemd startup setup
+│   ├── setup_vm.sh               # Unified Ubuntu gateway, Zeek, capture and sensor setup
 │   ├── requirements.txt          # Minimal Python dependencies (FastAPI, uvicorn)
 │   └── README.md                 # Standalone setup and deployment guide for the VM
 ├── .env                          # Local environment configuration (git-ignored)
@@ -86,6 +83,13 @@ ai-network-intrusion-detection-system/
 ---
 
 ## How to Run
+
+For the Ubuntu sensor VM, copy `sensor_agent/` into Ubuntu 24.04 and run
+`sudo bash setup_vm.sh --management-ip YOUR_HOST_ONLY_IP` from that directory.
+This single script combines gateway networking, Zeek installation, Zeek/capture
+autostart and sensor/Python setup. VirtualBox adapters and the Windows client are
+prerequisites; see the [VM setup guide](sensor_agent/README.md) for the full command,
+credentials, supported reruns and verification steps.
 
 ### 1. Start the Backend API
 

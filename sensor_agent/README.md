@@ -1,77 +1,143 @@
 # Zeek sensor agent
 
-The backend pulls connection logs on demand. The agent is a read-only HTTP reader;
-file progress lives in the backend's SQLite database, alongside connections and alerts.
-Deploy the backend and agent together: version 2.2 replaces the previous batch/ack protocol.
+The backend pulls connection logs on demand. `collector.py` is the authenticated,
+read-only HTTP reader running on Ubuntu; the main API, database and AI inference
+remain on the Windows host. Ingestion progress belongs to backend SQLite.
 
-## Installation
+## One-command Ubuntu VM setup
 
-On Ubuntu 22.04/24.04 run `bash install_zeek.sh enp0s8`, using the interface that sees
-the monitored traffic. The installer requires a standalone deployment and enables
-JSON logging. The collector reads JSON `conn.log` and dated `conn.*.log[.gz]` archives;
-other Zeek log types and TSV input are not supported.
+`setup_vm.sh` replaces the former `gateway_setup.sh`, `install_zeek.sh`,
+`setup_zeek_autostart.sh` and `setup_sensor_autostart.sh`. Their four responsibilities
+are implemented in one self-contained Bash script, with an overview comment and
+numbered sections. The old helpers have been removed to avoid conflicting setup paths.
 
-Copy `.env.example` to `.env` beside `collector.py`. Configure all required settings:
+Prepare these VM adapters in VirtualBox before running it:
 
-- `AGENT_HOST`: preferably the Ubuntu host-only management IP, not the lab interface.
-- `AGENT_PORT`: the HTTP listening port, normally `8000`.
-- `API_KEY`: generate with `python3 -c "import secrets; print(secrets.token_hex(32))"`.
-- `ZEEK_LOG_DIR`: `/opt/zeek/logs` for the standard `/opt/zeek` standalone layout.
-  The active directory is `/opt/zeek/spool/zeek`; `logs/current` can be a symlink.
-- `MAX_BATCH_RECORDS`, `MAX_BATCH_BYTES`, `MAX_LINE_BYTES`: bounded request budgets.
-  Keep `MAX_BATCH_RECORDS=500` or greater for the backend's 500-record requests.
+| Adapter | Default Ubuntu interface | Role |
+|---|---|---|
+| NAT | `enp0s3` | Internet access and the only IPv4 default route |
+| Internal Network, e.g. `IDS-LAN` | `enp0s8` | Client LAN and Zeek capture; gateway `192.168.50.1/24` |
+| Host-only | `enp0s9` | Windows host to sensor management, e.g. `192.168.56.101` |
 
-Protect `.env` with mode `0600`. Run the collector as an unprivileged account with
-read/traverse access to active logs and newly rotated archives (for example,
-membership in the Zeek log group). Do not run the collector as root. No agent state
-file or writable state directory is needed.
+Use **Ubuntu 24.04**, an existing non-root account with sudo, working Internet
+access and systemd. The host-only adapter must already have its management IPv4
+address (DHCP or an existing static configuration). Check addresses with
+`ip -br -4 address`. Interface names/IPs can differ on another VM; use the script's
+options. The three adapters must be distinct and their subnets must not overlap.
 
-Install dependencies in a virtual environment and start `.venv/bin/python collector.py`.
-Alternatively use `.venv/bin/uvicorn collector:app --host MANAGEMENT_IP --port 8000`;
-uvicorn requires explicit host/port flags. A renamed script uses its own module name.
-
-After preparing the agent, `.env` and `.venv`, copy `setup_sensor_autostart.sh` into
-Ubuntu and run it there. For the existing VM, whose collector is named `sensor_agent.py`:
+Copy this directory to Ubuntu. The setup needs `setup_vm.sh`, `collector.py` and
+`requirements.txt` together. From the **VM console**, run:
 
 ```bash
-sudo bash setup_sensor_autostart.sh \
-  --agent-dir /home/ubuntu/Desktop/nids_agent \
-  --script sensor_agent.py --user ubuntu --host 192.168.56.101
+cd ~/sensor_agent
+sudo bash setup_vm.sh --management-ip 192.168.56.101
 ```
 
-If you copy this whole folder instead, the script defaults to its own directory and
-the filename `collector.py`; supply `--host` and optionally `--user`. The IP must
-already exist on Ubuntu. Protect `.env` with `chmod 600` and ensure the selected
-user owns/can read it before running the helper. The `zeek` group must already exist
-and have read/traverse access to the logs; the helper does not change log permissions.
+Replace the example IP with the actual host-only address. One invocation performs:
 
-The helper validates dependencies/configuration as the service user, verifies the
-generated systemd unit, backs up a changed existing unit, enables/restarts the single
-`nids-sensor.service`, and checks authenticated `/health`. Rerunning also reloads an
-updated agent or `.env`. It installs no packages and changes neither networking nor
-Zeek. A manually launched agent occupying the port must be stopped manually first.
-On failure inspect `sudo journalctl -u nids-sensor.service -n 60 --no-pager`; a backup
-path is printed if the previous unit was replaced. Restart-on-failure handles a failed
-process, not a hung one. This collector service remains separate from root Zeek capture.
+1. **Gateway:** makes the client-side gateway address persistent, enables IPv4
+   forwarding, adds bounded client forwarding/NAT and management-port rules, and
+   persists IPv4 firewall rules without flushing unrelated policies. Existing
+   NetworkManager profiles are configured with `nmcli`; networkd-based setups use
+   a dedicated netplan file. The existing renderer/desktop networking is retained.
+2. **Zeek:** installs the official Zeek 9.0 packages if absent, prepares the local
+   standalone `[zeek]` node, enables JSON logs and grants the unprivileged sensor
+   access to current and rotated logs. `zeekctl install` prepares configuration;
+   capture is started by systemd, not by an unmanaged `zeekctl deploy` process.
+3. **Zeek autostart:** installs `zeek.service` and its capture helper, disables and
+   verifies TX checksum offloading, TSO, GSO, GRO and LRO before every start, and
+   verifies ZeekControl status, the real capture PID, interface and service cgroup.
+   Checksum validation stays enabled.
+4. **Sensor autostart:** deploys `collector.py` to `/opt/nids-sensor`, creates its
+   Python virtual environment, installs dependencies, prepares the protected
+   `.env`, enables/restarts `nids-sensor.service` and checks authenticated health.
 
-For Zeek itself on Ubuntu 24.04, after configuring standalone capture on `enp0s8`,
-run `sudo bash setup_zeek_autostart.sh`. It creates/enables `zeek.service` through
-ZeekControl, backs up an existing unit, and verifies the node process and service
-cgroup. If Zeek already runs outside the service, stop it before rerunning.
-The setup also installs `/usr/local/sbin/nids-zeek-capture`. `ExecStartPre` runs it
-before every Zeek start, including boot: TX checksum offloading, TSO, GSO, GRO
-and LRO are disabled on `enp0s8` and verified with `ethtool`. This prevents Zeek
-from discarding outgoing packets with unfinished checksums or seeing coalesced
-packets. Zeek checksum validation stays enabled. `install_zeek.sh` installs the
-required `ethtool` package; an existing installation needs it available too.
-When upgrading an older active unit, first run `sudo systemctl stop zeek.service`,
-then rerun the setup. A healthy rerun with the same unit reapplies offload flags
-without restarting Zeek. The interface device is an explicit startup dependency.
-The helper does not reboot or change routing, NAT, addresses or Zeek policies. Its two
-sequential stop commands stop capture, then wait for background archive helpers.
-The oneshot unit manages boot/shutdown, not continuous crash recovery:
-`active (exited)` alone is not proof that Zeek is capturing. Check
-`sudo /opt/zeek/bin/zeekctl status` after reboot.
+No automatic reboot is issued. Existing managed services are stopped during
+configuration and started again when their stages succeed. Repeated runs keep the
+same API key and avoid duplicate firewall rules/processes. A changed source
+collector or dependencies are installed on rerun. The setup does not train/deploy
+an AI model, configure VirtualBox itself, or change the Windows client/host.
+
+For a read-only system/configuration preflight:
+
+```bash
+sudo bash setup_vm.sh --management-ip 192.168.56.101 --check
+sudo bash setup_vm.sh --help
+```
+
+`--check` does not install packages, apply networking or change services. It is not
+a full fresh-install test: package downloads, dependency installation and final
+service checks happen only during actual setup. A complete installation must still
+be validated on the newly created VM.
+
+### Credentials and existing installations
+
+If `/opt/nids-sensor/.env` already exists, it is reused. Otherwise, a real `.env`
+beside the copied setup is used; if neither exists, setup generates a random API
+key. The key is never printed and the installed `.env` is owned by the service
+account with mode `0600`. Do not copy an unchanged `.env.example` to `.env`: its
+placeholder key is intentionally rejected.
+
+To migrate an older agent installation while preserving its key and limits:
+
+```bash
+sudo bash setup_vm.sh --management-ip 192.168.56.101 \
+  --agent-user ubuntu --env-file /home/ubuntu/Desktop/nids_agent/.env
+```
+
+The selected CLI management IP and port configure the endpoint explicitly. Existing
+configurations must supply every setting listed in `.env.example`; invalid/missing
+settings are rejected instead of silently replacing the key. Changing the log path
+away from `/opt/zeek/logs` is outside this setup's supported layout.
+
+Configure the Windows host backend separately:
+
+```dotenv
+SENSOR_MOCK_MODE=False
+SENSOR_AGENT_URL=http://192.168.56.101:8000
+SENSOR_AGENT_API_KEY=<same API_KEY as /opt/nids-sensor/.env>
+```
+
+Read/copy the key locally from the protected file; do not commit either `.env` or
+paste the key into shared logs. Restart the backend after changing its configuration.
+HTTP does not encrypt the key or logs; use the trusted isolated management network,
+or arrange HTTPS before exposing this link to an untrusted network.
+
+The Windows client VM must be attached to the same Internal Network and configured
+with a client address (e.g. `192.168.50.2/24`), gateway `192.168.50.1`, and a reachable
+DNS server. No DHCP/DNS server is installed by this setup. The host-only address
+must remain stable across boots; preserve its DHCP assignment or set it statically.
+
+### Supported reruns and failure handling
+
+The installer is intended for a fresh VM or the simple existing standalone layout.
+It refuses an active UFW/firewalld/nftables manager, custom systemd drop-ins, unmanaged Zeek
+processes, other Zeek series, conflicting internal routes/addresses and complex
+bridge/bond/VLAN configurations. It does not disable these safeguards or unrelated
+firewalls automatically. Integrate such custom configurations explicitly first.
+
+Backups are kept in a root-only `/var/backups/nids-vm-setup.*` directory; the path is
+printed on completion or failure. They may include credentials and must remain
+private. Package/network/service installation is not a single atomic transaction:
+on failure, the stage is reported and completed changes remain for inspection and
+rerun. Packages are not automatically purged and old logs are not deleted. Backups
+are local recovery material, not a promise of automatic full rollback.
+
+After setup and after a manual reboot:
+
+```bash
+sudo systemctl status zeek nids-sensor --no-pager
+sudo /opt/zeek/bin/zeekctl status
+sudo ethtool -k enp0s8
+sysctl net.ipv4.ip_forward
+sudo iptables -t nat -S POSTROUTING
+```
+
+`zeek.service` remains a oneshot startup/shutdown unit; `active (exited)` alone does
+not prove that Zeek is still capturing or recover it after a later crash. The sensor
+uses restart-on-failure, which does not detect a hung process. Test actual client
+traffic and pull logs from the backend after installing. Current JSON `conn.log`
+and retained `conn.*.log[.gz]` archives are supported; other log types and TSV are not.
 
 ## Backend and network
 
