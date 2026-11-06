@@ -6,7 +6,7 @@ import { LoadingOrb } from "@/components/ui/loading-orb";
 
 export function DataState({
   loading,
-  error,
+  error, 
   hasData,
   retry,
 }: {
