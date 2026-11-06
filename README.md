@@ -171,6 +171,30 @@ npm run dev
 
 ### Pull request checks
 
+For local secret detection before a commit, install the versioned Git hook once
+per checkout (Windows/Linux x86_64, Python 3.10+ and Git):
+
+```bash
+python scripts/install_git_hooks.py
+```
+
+The installer downloads checksum-pinned Gitleaks into Git's private metadata
+directory and sets this checkout's `core.hooksPath` to `.githooks`. It refuses to
+replace another hooks configuration. The pre-commit hook scans staged additions,
+including partially staged files, redacts detected values and blocks a commit if
+it finds a potential secret or the scanner fails/is missing. It does not stage,
+commit, push, alter files or restrict the branch name. Existing Git history is
+scanned separately by the pull-request workflow. Do not treat a clean scan as a
+guarantee that every possible secret format is detectable.
+
+Git hooks are local controls and can be bypassed by a user with control of the
+checkout (for example with `--no-verify`); they are not a server-side security
+boundary. This hook applies to Git CLI commits from a person or an assistant.
+Git GUI clients must support Git hooks; validate the specific client before
+relying on it. A fresh clone requires running the installer again. To disable
+this checkout's hook configuration intentionally, use
+`git config --local --unset core.hooksPath`.
+
 GitHub Actions runs only for pull requests targeting `main`, including updates
 to those requests. There are no push, scheduled or deployment triggers.
 `.github/workflows/ci.yml` runs the isolated backend unit suite (Python 3.13) and

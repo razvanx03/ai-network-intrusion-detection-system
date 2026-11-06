@@ -1,0 +1,25 @@
+#!/bin/sh
+# Scan the index, including partially staged files, rather than the working tree.
+set -eu
+
+repo=$(git rev-parse --show-toplevel)
+cd "$repo"
+tools=$(git rev-parse --path-format=absolute --git-path nids-tools)
+if [ -x "$tools/gitleaks.exe" ]; then
+    scanner="$tools/gitleaks.exe"
+elif [ -x "$tools/gitleaks" ]; then
+    scanner="$tools/gitleaks"
+else
+    echo 'Commit blocked: Gitleaks is missing. Run python scripts/install_git_hooks.py.' >&2
+    exit 1
+fi
+
+echo 'Checking staged changes for secrets...'
+if "$scanner" git . --staged --redact=100 --no-banner --verbose; then
+    exit 0
+else
+    result=$?
+    echo 'Commit blocked: secret scan failed. Review the redacted findings or scanner error.' >&2
+    echo 'Remove sensitive values from the staged content and retry; do not publish real credentials.' >&2
+    exit "$result"
+fi

@@ -1,1 +1,2 @@
 sensor_agent/*.sh text eol=lf
+.githooks/* text eol=lf
