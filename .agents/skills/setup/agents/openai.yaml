@@ -1,0 +1,4 @@
+interface:
+  display_name: "/setup"
+  short_description: "Configure and verify the Ubuntu NIDS sensor VM"
+  default_prompt: "Use $setup to configure the Ubuntu sensor VM and report verification results, errors and repairs."

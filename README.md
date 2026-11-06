@@ -169,6 +169,36 @@ npm run dev
 
 ## Verification
 
+### Pull request checks
+
+GitHub Actions runs only for pull requests targeting `main`, including updates
+to those requests. There are no push, scheduled or deployment triggers.
+`.github/workflows/ci.yml` runs the isolated backend unit suite (Python 3.13) and
+frontend lint/build (Node 22, `npm ci`, explicit `VITE_API_BASE_URL=/api`).
+`.github/workflows/security.yml` scans reachable Git history with Gitleaks and
+audits frontend dependencies with `npm audit` (high/critical failures) and the
+backend, sensor and offline AI requirements with `pip-audit` (all known findings).
+Resolution errors also fail the audit; scanners never automatically update packages.
+
+Actions are pinned to commit SHAs, checkout credentials are not persisted, and
+the workflow token has read-only contents access. No application secrets, VM access,
+datasets or selected model artifacts are required. `.gitleaksignore` documents one
+exact historical documentation example; it does not exclude files or future secrets.
+Making these checks mandatory before merge requires a GitHub branch protection
+rule or ruleset configured separately.
+
+### Ubuntu setup skill
+
+The reusable `setup` skill is versioned in `.agents/skills/setup/`. Invoke it with
+`$setup` and identify the Ubuntu VM to configure. It inspects the actual adapters
+and existing credentials, transfers and runs `sensor_agent/setup_vm.sh`, diagnoses
+scoped setup failures and reports repairs, verification and unresolved items.
+The skill configures the gateway, Zeek and Python collector; the main API, database
+and AI inference remain on the host. Loading the skill does not itself run setup.
+Reboots and changes to the host/Windows client's networking require their own scope.
+
+### Authentication and unit tests
+
 Logout persists an individual JWT fingerprint and expiration in `revoked_tokens`.
 Every protected request checks that table; a copied logged-out token remains
 rejected after API restart. New tokens have unique IDs, and older unexpired
