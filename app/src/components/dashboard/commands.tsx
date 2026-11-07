@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { LoadingOrb } from "@/components/ui/loading-orb";
 import {
   AlertDialog,
@@ -24,12 +23,10 @@ export type Command =
 export function Commands({
   busy,
   run,
-  detectorStatus,
   running = false,
 }: {
   busy: Command | null;
   run: (command: Command) => void;
-  detectorStatus?: "configured" | "not_configured";
   running?: boolean;
 }) {
   const { t } = useI18n();
@@ -38,7 +35,6 @@ export function Commands({
       <CardContent className="flex flex-col gap-4 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-base font-semibold">{t("console_title")}</h1>
-          {detectorStatus && <Badge variant="outline">{t(`detector_${detectorStatus}`)}</Badge>}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => run("analyze")} disabled={!!busy || running}>

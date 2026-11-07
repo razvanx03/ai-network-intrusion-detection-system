@@ -1,6 +1,4 @@
 from typing import Any
-import httpx
-from app.ai import engine
 from app.repositories.overview_repository import OverviewRepository
 from app.integrations.sensor_client import sensor_client
 from app.repositories.connection_repository import ConnectionRepository
@@ -20,29 +18,7 @@ class SystemService:
         self.sessions = AnalysisRepository(db)
 
     def overview(self):
-        return {**OverviewRepository(self.db).summary(),
-                "detector_name": engine.analysis_engine.name,
-                "detector_version": engine.analysis_engine.version}
-
-    async def sensor_status(self):
-        if sensor_client.mock_mode:
-            return {"status": "sample_mode"}
-        try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
-                response = await client.get(f"{sensor_client.base_url}/health",
-                                            headers={"X-API-Key": sensor_client.api_key})
-            if response.status_code in (401, 403):
-                return {"status": "unauthorized"}
-            if response.status_code != 200:
-                return {"status": "unreachable"}
-            body = response.json()
-            if not isinstance(body, dict) or body.get("status") != "ok" or body.get("service") != "zeek-sensor-agent":
-                return {"status": "invalid_response"}
-            return {"status": "reachable"}
-        except httpx.HTTPError:
-            return {"status": "unreachable"}
-        except ValueError:
-            return {"status": "invalid_response"}
+        return OverviewRepository(self.db).summary()
 
     async def fetch_and_analyze(self, requested_by: int) -> dict[str, Any]:
         return await AnalysisService(self.db).run(requested_by, AnalysisRequest())

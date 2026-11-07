@@ -15,14 +15,12 @@ from app.schemas.system import (
     FetchAnalyzeResponse,
     SensorResetResponse,
     OverviewResponse,
-    SensorStatusResponse,
 )
 from app.services.system_service import SystemService
 from app.repositories.sensor_cursor_repository import CursorConflictError
 from app.models.user import User
 from app.services.analysis_service import AnalysisBusyError, AnalysisRunError
 from app.routes.analysis_routes import run_error
-from app.ai import engine
 
 router = APIRouter(prefix=SYSTEM_ROUTE_PREFIX, tags=["System & Sensor Operations"], dependencies=[Depends(get_current_user)])
 
@@ -30,12 +28,6 @@ router = APIRouter(prefix=SYSTEM_ROUTE_PREFIX, tags=["System & Sensor Operations
 @router.get("/overview", response_model=OverviewResponse)
 def overview(db: Session = Depends(get_db)):
     return SystemService(db).overview()
-
-
-@router.get("/sensor-status", response_model=SensorStatusResponse)
-async def sensor_status(db: Session = Depends(get_db)):
-    """Probe agent availability without fetching or analyzing connection records."""
-    return await SystemService(db).sensor_status()
 
 
 @router.post("/fetch-and-analyze", response_model=FetchAnalyzeResponse)
@@ -87,5 +79,4 @@ def health_check(db: Session = Depends(get_db)):
         "connections_total": conn_repo.count_total(),
         "alerts_total": alert_repo.count_total(),
         "legacy_alerts_total": alert_repo.count_legacy(),
-        "detector_status": "configured" if engine.analysis_engine.configured else "not_configured",
     }

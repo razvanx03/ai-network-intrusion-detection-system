@@ -1,4 +1,3 @@
-from typing import Literal
 from pydantic import BaseModel
 from app.schemas.analysis import AnalysisSessionResponse
 
@@ -10,7 +9,6 @@ class SystemHealthResponse(BaseModel):
     connections_total: int
     alerts_total: int
     legacy_alerts_total: int
-    detector_status: str
 
 
 class FetchAnalyzeResponse(BaseModel):
@@ -42,9 +40,3 @@ class OverviewResponse(BaseModel):
     failed_sessions: int
     running_session_id: str | None
     protocols: list[ProtocolCount]
-    detector_name: str
-    detector_version: str | None
-
-
-class SensorStatusResponse(BaseModel):
-    status: Literal["reachable", "unreachable", "unauthorized", "invalid_response", "sample_mode"]

@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableHead, TableHeader, TableRow, TableBody, TableCell } from "@/components/ui/table";
 import { DataState } from "@/components/data-state";
+import { LoadingRegion } from "@/components/loading-region";
 import { Pagination } from "@/components/pagination";
 import { useResource } from "@/hooks/use-resource";
 import { useI18n } from "@/i18n";
@@ -34,7 +35,8 @@ export function FindingDetails({ alert, close }: { alert: Alert; close: () => vo
       {alert.mitre_technique && <p className="text-sm">{t("th_mitre")}: {alert.mitre_technique}</p>}
       <h3 className="text-sm font-medium">{t("finding_evidence")}</h3>
       {!alert.analysis_session_id ? <p className="text-sm text-muted-foreground">{t("finding_legacy_evidence")}</p> : <>
-        <DataState loading={resource.loading} error={resource.error} hasData={!!resource.data} retry={() => { void resource.refresh(); }} />
+        <DataState loading={false} error={resource.error} hasData={!!resource.data} retry={() => { void resource.refresh(); }} />
+        <LoadingRegion loading={resource.loading}>
         {resource.data && (resource.data.items.length ? <Table>
           <TableHeader><TableRow><TableHead>{t("th_uid")}</TableHead><TableHead>{t("th_source")}</TableHead><TableHead>{t("th_destination")}</TableHead><TableHead>{t("th_protocol")}</TableHead><TableHead>{t("th_duration")}</TableHead><TableHead>{t("th_bytes")}</TableHead><TableHead>{t("th_packets")}</TableHead><TableHead>{t("th_conn_state")}</TableHead></TableRow></TableHeader>
           <TableBody>{resource.data.items.map(connection => <TableRow key={connection.id}>
@@ -48,6 +50,7 @@ export function FindingDetails({ alert, close }: { alert: Alert; close: () => vo
             <TableCell>{connection.conn_state ?? "—"}</TableCell>
           </TableRow>)}</TableBody>
         </Table> : <p className="text-sm text-muted-foreground">{t("analysis_no_records")}</p>)}
+        </LoadingRegion>
         {resource.data && <Pagination offset={resource.data.offset} limit={resource.data.limit} total={resource.data.total} loading={resource.loading} onChange={setOffset} />}
       </>}
     </CardContent>

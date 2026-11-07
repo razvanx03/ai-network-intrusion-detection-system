@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 from pydantic import BaseModel, Field
 import httpx
 from app.core.config import settings
+from app.schemas.sensor import SensorFileIssue
 
 
 class SensorBatch(BaseModel):
@@ -19,8 +20,15 @@ class SensorFile(BaseModel):
     first_ts: float
 
 
+class SensorFileError(ValueError):
+    def __init__(self, issue: SensorFileIssue):
+        self.issue = issue
+        super().__init__(issue.code)
+
+
 class SensorFileList(BaseModel):
     files: list[SensorFile]
+    issues: list[SensorFileIssue] = Field(default_factory=list)
 
 
 class SensorFileBatch(BaseModel):
@@ -58,10 +66,13 @@ class SensorClient:
         raise RuntimeError("Remote sensors require file discovery and backend-owned cursors.")
 
     async def list_files(self) -> list[SensorFile]:
+        return (await self.discover_files()).files
+
+    async def discover_files(self) -> SensorFileList:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(f"{self.base_url}/files", headers={"X-API-Key": self.api_key})
             response.raise_for_status()
-            return SensorFileList.model_validate(response.json()).files
+            return SensorFileList.model_validate(response.json())
 
     async def read_file(self, file: SensorFile, offset: int) -> SensorFileBatch:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -69,6 +80,15 @@ class SensorClient:
                 f"{self.base_url}/logs", headers={"X-API-Key": self.api_key},
                 params={"file": file.file, "file_id": file.file_id, "offset": offset, "limit": 500},
             )
+            if response.status_code == 422:
+                body = response.json()
+                detail = body.get("detail") if isinstance(body, dict) else None
+                if isinstance(detail, dict) and detail.get("code") in (
+                    "corrupt_file", "unreadable_file", "oversized_file",
+                ):
+                    raise SensorFileError(SensorFileIssue(
+                        file=file.file, code=detail["code"], offset=offset,
+                    ))
             response.raise_for_status()
             batch = SensorFileBatch.model_validate(response.json())
         if (batch.file_id != file.file_id or batch.file != file.file or batch.offset != offset

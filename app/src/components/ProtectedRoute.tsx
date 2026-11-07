@@ -19,14 +19,6 @@ export const ProtectedRoute: React.FC = () => {
     return <Navigate to="/dashboard" replace />;
   }
 
-  // Login page route
-  if (isLoginPage) {
-    if (!isLoading && isAuthenticated) {
-      return <Navigate to="/dashboard" replace />;
-    }
-    return <Outlet />;
-  }
-
   // Active session check in progress
   if (isLoading) {
     return (
@@ -34,6 +26,12 @@ export const ProtectedRoute: React.FC = () => {
         <LoadingOrb state="solving" size={32} />
       </div>
     );
+  }
+
+  // Resolve the cookie session before displaying the login form.
+  if (isLoginPage) {
+    if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+    return <Outlet />;
   }
 
   if (error)

@@ -15,6 +15,7 @@ from app.services.analysis_service import (
     AnalysisBusyError, AnalysisRunError, AnalysisService, InvalidRecordsError,
 )
 from app.services.ingestion_service import IngestionBatch
+from app.schemas.sensor import SensorFileIssue
 
 
 @pytest.fixture
@@ -258,3 +259,23 @@ def test_empty_sensor_session_completes_with_zero_counts(analysis):
     result = asyncio.run(service.run(7, AnalysisRequest()))
     assert result["new_connections_ingested"] == result["new_alerts_detected"] == 0
     detector.analyze_batch.assert_not_called()
+
+
+def test_file_issue_is_committed_and_analysis_continues(analysis, connection_factory, raw_record):
+    service, detector, session = analysis
+    session.file_issues = []
+    issue = SensorFileIssue(file="broken.log.gz", code="corrupt_file", offset=100)
+    service.sessions.record_file_issue.side_effect = lambda _, value: session.file_issues.append(value.model_dump())
+    service.ingestion.persist.return_value = [connection_factory()]
+
+    async def stream():
+        yield IngestionBatch(records=[], issue=issue)
+        assert service.db.commit.call_count == 2
+        yield IngestionBatch(records=[raw_record])
+
+    service.ingestion.batches.return_value = stream()
+    result = asyncio.run(service.run(7, AnalysisRequest()))
+    assert result["analysis_session"].status == "completed"
+    assert result["analysis_session"].file_issues == [issue]
+    service.ingestion.persist.assert_called_once()
+    detector.analyze_batch.assert_called_once()

@@ -74,6 +74,10 @@ class AnalysisRepository:
         session.records_prepared += prepared
         session.new_alerts_detected += alerts
 
+    def record_file_issue(self, session_id: str, issue):
+        session = self.get(session_id)
+        session.file_issues = [*session.file_issues, issue.model_dump()]
+
     def interrupt_running(self):
         self.db.execute(update(AnalysisSession).where(AnalysisSession.status == "running").values(
             status="interrupted", error_code="server_restarted", finished_at=datetime.now(timezone.utc),

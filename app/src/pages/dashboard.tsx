@@ -13,21 +13,22 @@ import { useDashboard } from "@/hooks/use-dashboard";
 import { useI18n } from "@/i18n";
 import { api } from "@/services/api";
 import type { Severity, Provenance, AlertStatus, Alert } from "@/services/types";
-import { SystemStatus } from "@/components/dashboard/system-status";
 import { FindingDetails } from "@/components/dashboard/finding-details";
 import { AnalysisSessions } from "@/components/dashboard/analysis-sessions";
+import { DEFAULT_PAGE_SIZE } from "@/constants";
 const Charts = lazy(() => import("@/components/dashboard/charts"));
 export default function DashboardPage() {
   const { t } = useI18n();
   const [severity, setSeverity] = useState<Severity | "">("");
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [provenance, setProvenance] = useState<Provenance>("analysis");
   const [historyVersion, setHistoryVersion] = useState(0);
   const [selectedFinding, setSelectedFinding] = useState<Alert | null>(null);
   const [busy, setBusy] = useState<Command | null>(null);
   const locked = useRef(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const resource = useDashboard(severity, offset, provenance);
+  const resource = useDashboard(severity, offset, provenance, pageSize);
   const run = async (command: Command, id?: number, status: AlertStatus = "RESOLVED") => {
     if (locked.current) return;
     locked.current = true;
@@ -37,11 +38,13 @@ export default function DashboardPage() {
       if (command === "analyze") {
         const result = await api.fetchAndAnalyze();
         setNotice({
-          key: result.analysis_session.detector_status === "not_configured" ? "analysis_prepared" : "analysis_done",
+          key: result.analysis_session.file_issues.length ? "analysis_done_with_skips"
+            : result.analysis_session.detector_status === "not_configured" ? "analysis_prepared" : "analysis_done",
           params: {
             conns: result.new_connections_ingested,
             alerts: result.new_alerts_detected,
             prepared: result.analysis_session.records_prepared,
+            files: result.analysis_session.file_issues.length,
           },
         });
       } else if (command === "sensor") {
@@ -77,10 +80,9 @@ export default function DashboardPage() {
     }
   };
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 [overflow-anchor:none]">
       <Commands
         busy={busy}
-        detectorStatus={resource.data?.health.detector_status}
         running={!!resource.data?.overview.running_session_id}
         run={(command) => {
           void run(command);
@@ -88,7 +90,8 @@ export default function DashboardPage() {
       />
       <OperationNotice notice={notice} close={() => setNotice(null)} />
       <DataState
-        loading={resource.loading}
+        pageLoading
+        loading={resource.loading && !resource.data}
         error={resource.error}
         hasData={!!resource.data}
         retry={() => {
@@ -104,12 +107,12 @@ export default function DashboardPage() {
             stats={resource.data.stats}
             overview={resource.data.overview}
           />
-          <SystemStatus health={resource.data.health} overview={resource.data.overview} />
-          <AnalysisSessions key={historyVersion} inspect={setSelectedFinding} />
+          <AnalysisSessions refreshVersion={historyVersion} inspect={setSelectedFinding} />
           <Suspense fallback={<LoadingOrb text={t("loading")} />}>
             <Charts stats={resource.data.stats} protocols={resource.data.overview.protocols} />
           </Suspense>
           <Alerts
+            loading={resource.loading}
             page={resource.data.alerts}
             severity={severity}
             onFilter={(value) => {
@@ -117,6 +120,7 @@ export default function DashboardPage() {
               setOffset(0);
             }}
             onPage={setOffset}
+            onPageSize={(value) => { setPageSize(value); setOffset(0); }}
             busy={!!busy || resource.loading}
             provenance={provenance}
             onProvenance={(value) => { setProvenance(value); setOffset(0); setSelectedFinding(null); }}

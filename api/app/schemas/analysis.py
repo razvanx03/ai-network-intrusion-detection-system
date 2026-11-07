@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from app.schemas.sensor import SensorFileIssue
 
 
 class AnalysisRequest(BaseModel):
@@ -33,6 +34,7 @@ class AnalysisSessionResponse(BaseModel):
     records_prepared: int
     new_alerts_detected: int
     error_code: str | None
+    file_issues: list[SensorFileIssue] = Field(default_factory=list)
     started_at: datetime
     finished_at: datetime | None
 

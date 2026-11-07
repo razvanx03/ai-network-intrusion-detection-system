@@ -5,7 +5,9 @@ import gzip
 import hashlib
 import hmac
 import json
+import math
 import os
+import zlib
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -48,7 +50,7 @@ if not 1024 <= MAX_BYTES <= 16 * 1024 * 1024:
 if not 1024 <= MAX_LINE_BYTES <= MAX_BYTES:
     raise RuntimeError("MAX_LINE_BYTES must be between 1 KiB and MAX_BATCH_BYTES.")
 
-app = FastAPI(title="Zeek Sensor Agent", version="2.2.0")
+app = FastAPI(title="Zeek Sensor Agent", version="2.3.0")
 
 
 def authenticate(x_api_key: str | None = Header(default=None)):
@@ -126,15 +128,21 @@ def stream_identity(stream: BinaryIO, sealed: bool = False) -> tuple[str, float]
         if len(line) > MAX_LINE_BYTES:
             raise HTTPException(status_code=413, detail="Log line too large.")
         if not line.endswith(b"\n"):
-            if sealed:
-                raise HTTPException(status_code=422, detail="Incomplete record in archived log.")
-            return None
+            if not sealed:
+                return None
+            # A sealed file can end with valid JSON without a final newline.
         record = parse_record(line)
         if record is not None:
             if "uid" not in record or "ts" not in record:
                 raise HTTPException(status_code=422, detail="Expected a conn.log record.")
+            try:
+                first_ts = float(record["ts"])
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(status_code=422, detail="Invalid connection timestamp.") from exc
+            if not math.isfinite(first_ts) or not isinstance(record["uid"], str) or not record["uid"]:
+                raise HTTPException(status_code=422, detail="Invalid connection identity.")
             canonical = json.dumps(record, sort_keys=True, separators=(",", ":"))
-            return hashlib.sha256(canonical.encode()).hexdigest(), float(record["ts"])
+            return hashlib.sha256(canonical.encode()).hexdigest(), first_ts
     return None
 
 
@@ -151,9 +159,10 @@ def list_files():
     if current.exists():
         candidates.append(("current/conn.log", current, False))
     files = {}
-    try:
-        # Prefer a stable archive if rotation exposes the same stream twice.
-        for name, path, archived in sorted(candidates):
+    issues = []
+    # A bad file must not hide healthy streams during discovery.
+    for name, path, archived in sorted(candidates):
+        try:
             path = resolve_log_file(name)
             with open_log(path) as stream:
                 identity = stream_identity(stream, sealed=archived)
@@ -165,9 +174,17 @@ def list_files():
                     "file": name, "file_id": file_id, "archived": archived,
                     "first_ts": first_ts,
                 }
-    except (OSError, EOFError, ValueError):
-        raise HTTPException(status_code=503, detail="Could not enumerate logs; retry after rotation.")
-    return {"files": sorted(files.values(), key=lambda item: (item["first_ts"], item["file"]))}
+        except HTTPException as exc:
+            if exc.status_code not in (404, 413, 422):
+                raise
+            code = "file_unavailable" if exc.status_code == 404 else "oversized_file" if exc.status_code == 413 else "corrupt_file"
+            issues.append({"file": name, "code": code})
+        except (gzip.BadGzipFile, EOFError, zlib.error, ValueError):
+            issues.append({"file": name, "code": "corrupt_file"})
+        except OSError:
+            issues.append({"file": name, "code": "unreadable_file"})
+    return {"files": sorted(files.values(), key=lambda item: (item["first_ts"], item["file"])),
+            "issues": issues}
 
 
 @app.get("/health", dependencies=[Depends(authenticate)])
@@ -231,11 +248,10 @@ def read_logs(
 
                 # Do not consume a partial line while Zeek is writing it.
                 if not line.endswith(b"\n"):
-                    if archived:
-                        raise HTTPException(status_code=422, detail="Incomplete record in archived log.")
-                    stream.seek(line_start)
-                    next_offset = line_start
-                    break
+                    if not archived:
+                        stream.seek(line_start)
+                        next_offset = line_start
+                        break
 
                 record = parse_record(line)
 
@@ -270,7 +286,7 @@ def read_logs(
 
                 while True:
                     line = stream.readline(MAX_LINE_BYTES + 1)
-                    if not line or not line.endswith(b"\n"):
+                    if not line or (not archived and not line.endswith(b"\n")):
                         break
                     if len(line) > MAX_LINE_BYTES:
                         raise HTTPException(status_code=413, detail="Log line too large.")
@@ -280,10 +296,15 @@ def read_logs(
 
                 stream.seek(saved_position)
 
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code in (413, 422):
+            code = "oversized_file" if exc.status_code == 413 else "corrupt_file"
+            raise HTTPException(status_code=422, detail={"code": code}) from exc
         raise
-    except (OSError, EOFError, ValueError):
-        raise HTTPException(status_code=500, detail="Could not read log file.")
+    except (gzip.BadGzipFile, EOFError, zlib.error, ValueError) as exc:
+        raise HTTPException(status_code=422, detail={"code": "corrupt_file"}) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=422, detail={"code": "unreadable_file"}) from exc
 
     return {
         "file": file,

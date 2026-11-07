@@ -23,17 +23,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const current = await api.getMe(controller.signal);
       if (!controller.signal.aborted) setUser(current);
+      return !controller.signal.aborted;
     } catch (err) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) return false;
       if (err instanceof ApiError && (err.status === 401 || err.status === 403))
         setUser(null);
       else setError(true);
+      return false;
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
   useEffect(() => {
-    // Check the server-owned session when the provider mounts.
+    // Synchronize authentication with the server's HttpOnly cookie session.
     // oxlint-disable-next-line react/set-state-in-effect
     void refreshUser();
     return () => pending.current?.abort();
@@ -48,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   const login = async (username: string, password: string) => {
     pending.current?.abort();
+    setError(false);
     const result = await api.login(username, password);
     setUser(result.user);
     setError(false);

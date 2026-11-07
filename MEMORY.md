@@ -12,6 +12,7 @@ present state of a VM. They are not executable controls.
 | [Capture and offloading](.agents/memory/zeek-capture.md) | Configuring Zeek autostart or investigating missing/incorrect traffic |
 | [Graphical login investigation](.agents/memory/ubuntu-graphical-login.md) | Investigating a black screen on the Ubuntu VM |
 | [Model evaluation boundaries](.agents/memory/ai-evaluation.md) | Changing inference, evaluating datasets or reporting detection results |
+| [Manual web requests](.agents/memory/manual-web-requests.md) | Changing frontend loading, polling or session initialization |
 
 Update a focused note after a confirmed correction rather than appending a chat
 transcript. Keep evidence, dates for historical observations, and remaining limits

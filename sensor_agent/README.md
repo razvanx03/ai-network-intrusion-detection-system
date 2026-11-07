@@ -157,6 +157,8 @@ HTTPS because HTTP sends the API key without transport encryption.
 - Every agent endpoint requires `X-API-Key`, including `GET /health`.
 - `GET /files` discovers current and retained archived connection streams, excluding
   summary logs. Entries contain `file`, `file_id`, `archived`, and `first_ts`.
+  The response also contains `issues` for files that cannot be discovered safely.
+  Each issue supplies a relative filename and a stable code, without raw log data.
 - `file_id` is a digest of the first complete connection record. Rename and gzip
   compression preserve it, including when the active file becomes an archive.
 - `GET /logs?file=...&file_id=...&offset=...&limit=500` returns `records`,
@@ -171,8 +173,16 @@ HTTPS because HTTP sends the API key without transport encryption.
 - Existing connection UIDs are deduplicated and only new UIDs are analyzed. Retry or
   backend/agent restart does not require replaying committed records. Concurrent pulls
   can encounter a database conflict; retry rather than clearing progress.
-- Incomplete current-file lines remain unread. Malformed JSON, unreadable archives,
-  incompatible protocols and HTTP failures produce errors instead of empty fallbacks.
+- Incomplete current-file lines remain unread. A sealed archive may end with valid
+  JSON without a newline; genuinely truncated JSON is rejected. Malformed records,
+  damaged gzip streams, oversized records and per-file access failures are reported
+  explicitly. Updated `/logs` responses use HTTP 422 with a typed per-file code.
+  The backend stops reading that file for this run and continues the other files,
+  recording `file_issues` in the analysis session. No cursor is advanced over the
+  failed batch; prior committed batches remain stored. A skipped file is retried
+  from its retained cursor on the next manual fetch. No original log is changed
+  or deleted. Connection/authentication failures and invalid transport contracts
+  still fail the operation rather than masquerading as an empty sensor.
 - The backend reset-cursor operation clears that sensor's SQLite progress without
   modifying VM logs. Re-reading retained logs deduplicates existing connection UIDs.
   Clearing connections/alerts alone leaves cursors intact; reset cursors too to re-import.

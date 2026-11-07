@@ -2,14 +2,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
-  Table,
   TableHeader,
   TableBody,
   TableRow,
   TableHead,
   TableCell,
 } from "@/components/ui/table";
-import { Pagination } from "@/components/pagination";
+import { PaginatedTable } from "@/components/paginated-table";
 import { useI18n } from "@/i18n";
 import { attackKeys, descriptionKeys } from "@/lib/display";
 import type { Alert, Page, Severity, Provenance, AlertStatus } from "@/services/types";
@@ -25,23 +24,27 @@ export function Alerts({
   severity,
   onFilter,
   onPage,
+  onPageSize,
   updateStatus,
   inspect,
   provenance,
   onProvenance,
   falsePositives,
   busy,
+  loading,
 }: {
   page: Page<Alert>;
   severity: Severity | "";
   onFilter: (value: Severity | "") => void;
   onPage: (offset: number) => void;
+  onPageSize: (limit: number) => void;
   updateStatus: (id: number, status: AlertStatus) => void;
   inspect: (alert: Alert) => void;
   provenance: Provenance;
   onProvenance: (value: Provenance) => void;
   falsePositives: number;
   busy: boolean;
+  loading: boolean;
 }) {
   const { t } = useI18n();
   return (
@@ -81,19 +84,15 @@ export function Alerts({
         </div>
       </CardHeader>
       <CardContent>
-        {!page.items.length ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            {t("no_alerts")}
-          </p>
-        ) : (
-          <Table>
+        <PaginatedTable hasRows={page.items.length > 0} emptyMessage={t("no_alerts")} dataLoading={loading}
+          offset={page.offset} limit={page.limit} total={page.total} loading={busy}
+          onChange={onPage} onLimitChange={onPageSize}>
             <TableHeader>
               <TableRow>
                 <TableHead>{t("th_severity")}</TableHead>
                 <TableHead>{t("th_attack_type")}</TableHead>
                 <TableHead>{t("th_source")}</TableHead>
                 <TableHead>{t("th_destination")}</TableHead>
-                <TableHead>{t("th_detector")}</TableHead>
                 <TableHead>{t("model_score")}</TableHead>
                 <TableHead>{t("th_status")}</TableHead>
                 <TableHead>{t("th_action")}</TableHead>
@@ -125,11 +124,6 @@ export function Alerts({
                     {alert.dst_ip}
                     {alert.dst_port != null && `:${alert.dst_port}`}
                   </TableCell>
-                  <TableCell className="space-y-1 text-xs">
-                    <p>{alert.detector}</p>
-                    {alert.provenance === "legacy_demo" && <Badge variant="outline">{t("legacy_demo")}</Badge>}
-                    {alert.analysis_session_id && <p className="font-mono" title={alert.analysis_session_id}>{alert.analysis_session_id.slice(0, 8)}</p>}
-                  </TableCell>
                   <TableCell className="tabular-nums" title={t("model_score_help")}>{alert.confidence.toFixed(3)}</TableCell>
                   <TableCell>
                     <Badge
@@ -153,15 +147,7 @@ export function Alerts({
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
-        )}
-        <Pagination
-          offset={page.offset}
-          limit={page.limit}
-          total={page.total}
-          loading={busy}
-          onChange={onPage}
-        />
+        </PaginatedTable>
       </CardContent>
     </Card>
   );

@@ -11,7 +11,6 @@ AI NIDS collects Zeek connection metadata (`conn.log`) from a remote sensor and 
 - **Connection classification**: Uses duration, directional byte/packet counts, protocol, detected service and connection state. Shared preprocessing preserves missing values and applies the same feature transformations during training and inference.
 - **Operations dashboard**: Refreshes stored metrics and analysis status, provides a manual fetch-and-analyze command, severity filters, paginated connection records, alert exports and database/cursor management. An explicit sample mode reads bundled demonstration records.
 - **AI review workflow**: Shows unique stored, analyzed and flagged connections, pending analysis, session counts and protocol distribution. Open a finding to inspect its model score and source connection; mark it as new, under investigation, resolved or false positive. Demo history is available separately and excluded from AI dashboard statistics.
-- **Sensor availability**: An authenticated, read-only agent health probe reports reachability, access refusal or invalid responses. Availability checks do not import logs or confirm that Zeek itself is running.
 - **Secure Authentication**: Single-admin authentication backed by `bcrypt` password hashing and `HttpOnly` JWT cookies with strict CORS protection.
 - **Fail-Fast Configuration**: Strict environment validation on both backend and frontend — missing or invalid configuration causes an immediate, descriptive startup error.
 - **Bilingual & Themeable UI**: Instant switching between Romanian and English (`ro` / `en`) and Dark / Light themes (`dark` / `light`).
@@ -40,7 +39,7 @@ ai-network-intrusion-detection-system/
 │   ├── src/
 │   │   ├── components/           # ProtectedRoute & shadcn/ui primitives (Card, Table, Badge, etc.)
 │   │   ├── contexts/             # AuthContext (HttpOnly session state management)
-│   │   ├── layouts/              # AppLayout (Navigation bar, sensor status, user controls)
+│   │   ├── layouts/              # AppLayout (Navigation bar and user controls)
 │   │   ├── pages/                # File-based routes (/dashboard, /connections, /login)
 │   │   ├── services/             # Fetch API client with credentials support
 │   │   ├── constants.ts          # Strict environment variable validation
@@ -131,6 +130,13 @@ npm run dev
 
 ## Usage
 
+The web application checks the HttpOnly session cookie on startup and restores
+a valid administrator session automatically. Dashboard and connection data load
+when entering their pages. There is no periodic polling. Filters, pagination, details and
+completed commands load their related data following the user's action. Opening
+or leaving a page idle does not fetch or analyze sensor logs. Zeek capture and
+systemd service startup on Ubuntu are independent of these web controls.
+
 1. Sign in at `http://localhost:5173/login` using the administrator credentials configured in `.env`. The login form does not prefill credentials.
 2. On the **Live Dashboard** (`/dashboard`):
    - Click **Fetch & Analyze Logs** to pull the latest Zeek connection flows from the sensor, create a session, import and normalize new records, run the selected classifier, and display source connections and review findings. No analysis starts automatically.
@@ -163,6 +169,11 @@ npm run dev
 - The dashboard supports paginated alerts and connections, visible request errors, and Romanian/English themes and labels. Alert exports include all records matching the selected severity, not just the visible page.
 - `api/app/ai/engine.py` defines the detector contract. Startup loads the explicit `api/app/ai/deployment.json` configuration. The initial classifier is a CIC Zeek Random Forest baseline; its dataset scores do not establish local-network performance. Isolation Forest remains an offline experiment and is not enabled. The transport and frontend do not depend on a specific model.
 - The VM collector discovers current JSON conn.log streams and retained gzip archives. The backend commits each file cursor together with connections and alerts in SQLite, resumes across rotation, and analyzes only new connection UIDs. Retain unread archives until ingestion. Deploy the updated backend and sensor together. See [sensor setup and recovery](sensor_agent/README.md).
+- Corrupt or individually unreadable sensor files are skipped for the current run
+  and reported by filename/reason in analysis history. Other files continue;
+  successful earlier batches remain stored and failed-batch cursors do not advance.
+  Skipped files are retried on the next manual fetch. Backend startup applies an
+  additive migration for persisted session `file_issues`; update the sensor too.
 - Sensor mode describes configuration, not a live VM connectivity probe.
 - Collection currently supports JSON `conn.log` records and retained connection-log archives. DNS, HTTP, TLS and host security-event log ingestion, behavioral time windows and automatic traffic blocking are not implemented. Connection-state badges are protocol metadata, not attack verdicts.
 - Source files under `app/src/lib/` must be included when committing the frontend. Python environment directories remain ignored.
@@ -279,8 +290,10 @@ commits retain their existing behavior. No background ingestion or inference run
 - `POST /api/system/fetch-and-analyze` remains the dashboard command. Its existing
   summary fields are retained and `analysis_session` is added.
 - `GET /api/system/overview` returns persisted connection/session aggregates and
-  the loaded detector identity. `GET /api/system/sensor-status` probes agent health.
-  Both endpoints require the administrator cookie.
+  requires the administrator cookie. Sensor access is exercised by an explicit
+  fetch-and-analyze operation; there is no separate availability-probe endpoint
+  in the main API. The collector's authenticated `/health` remains available for
+  installer/service verification.
 - Alert list, statistics and exports accept `provenance=analysis` or
   `provenance=legacy_demo`. The dashboard requests analysis-only statistics and
   lets users inspect demo history separately.
@@ -337,7 +350,7 @@ Existing integration files updated:
 - `api/app/models/alert.py`, `api/app/repositories/alert_repository.py`, `api/app/repositories/connection_repository.py`: provenance, evidence and transactional resets.
 - `api/app/schemas/alert.py`, `api/app/schemas/connection.py`, `api/app/schemas/system.py`: validation and compatible response extensions.
 - `api/app/routes/system_routes.py`, `api/app/services/system_service.py`, `api/app/services/alert_service.py`: existing command compatibility, reset safety and export provenance.
-- `app/src/components/dashboard/commands.tsx`, `app/src/components/dashboard/alerts.tsx`, `app/src/pages/dashboard.tsx`: detector availability, historical-demo labels and session integration.
+- `app/src/components/dashboard/commands.tsx`, `app/src/components/dashboard/alerts.tsx`, `app/src/pages/dashboard.tsx`: manual commands, historical-demo labels and session integration.
 - `app/src/services/api.ts`, `app/src/services/types.ts`, `app/src/i18n.tsx`: typed API integration and RO/EN text.
 - `api/requirements.txt`: pinned CPU inference dependencies matching the recorded training environment. Offline-only data dependencies are in `ai/requirements.txt`.
 - `README.md`: current architecture, lifecycle, API and file map.

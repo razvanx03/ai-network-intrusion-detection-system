@@ -72,11 +72,6 @@ export interface Overview {
   failed_sessions: number;
   running_session_id: string | null;
   protocols: { proto: string; count: number }[];
-  detector_name: string;
-  detector_version: string | null;
-}
-export interface SensorStatus {
-  status: "reachable" | "unreachable" | "unauthorized" | "invalid_response" | "sample_mode";
 }
 export interface Health {
   status: string;
@@ -85,7 +80,6 @@ export interface Health {
   connections_total: number;
   alerts_total: number;
   legacy_alerts_total: number;
-  detector_status: "configured" | "not_configured";
 }
 export interface Operation {
   status: string;
@@ -96,6 +90,11 @@ export interface AnalysisResult extends Operation {
   new_alerts_detected: number;
   alerts_summary: Record<string, number>;
   analysis_session: AnalysisSession;
+}
+export interface SensorFileIssue {
+  file: string;
+  code: "corrupt_file" | "unreadable_file" | "oversized_file" | "file_unavailable";
+  offset: number | null;
 }
 export interface AnalysisSession {
   id: string;
@@ -110,6 +109,7 @@ export interface AnalysisSession {
   records_prepared: number;
   new_alerts_detected: number;
   error_code: string | null;
+  file_issues: SensorFileIssue[];
   started_at: string;
   finished_at: string | null;
 }

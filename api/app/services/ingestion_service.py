@@ -1,6 +1,7 @@
 """Existing sensor transport, validation, deduplication and durable file progress."""
 from dataclasses import dataclass
-from app.integrations.sensor_client import sensor_client
+from pydantic import ValidationError
+from app.integrations.sensor_client import sensor_client, SensorFileError, SensorFileIssue
 from app.repositories.connection_repository import ConnectionRepository
 from app.repositories.sensor_cursor_repository import SensorCursorRepository
 from app.schemas.connection import ZeekLogItem
@@ -15,6 +16,7 @@ class IngestionBatch:
     offset: int = 0
     next_offset: int = 0
     completed: bool = False
+    issue: SensorFileIssue | None = None
 
 
 class IngestionService:
@@ -30,7 +32,10 @@ class IngestionService:
             # Caller commits before requesting the next batch.
             await sensor_client.acknowledge(batch.batch_id)
             return
-        for file in await sensor_client.list_files():
+        discovery = await sensor_client.discover_files()
+        for issue in discovery.issues:
+            yield IngestionBatch(records=[], issue=issue)
+        for file in discovery.files:
             cursor = self.cursors.get(sensor_client.base_url, file.file_id)
             completed = cursor is not None and cursor.completed
             offset = cursor.offset if cursor is not None else 0
@@ -38,7 +43,19 @@ class IngestionService:
             if completed:
                 continue
             while True:
-                batch = await sensor_client.read_file(file, offset)
+                try:
+                    batch = await sensor_client.read_file(file, offset)
+                except SensorFileError as exc:
+                    yield IngestionBatch(records=[], issue=exc.issue)
+                    break
+                try:
+                    for record in batch.records:
+                        ZeekLogItem.model_validate(record)
+                except ValidationError:
+                    yield IngestionBatch(records=[], issue=SensorFileIssue(
+                        file=file.file, code="corrupt_file", offset=offset,
+                    ))
+                    break
                 yield IngestionBatch(
                     records=batch.records, sensor_url=sensor_client.base_url,
                     file_id=file.file_id, file=file.file, offset=offset,

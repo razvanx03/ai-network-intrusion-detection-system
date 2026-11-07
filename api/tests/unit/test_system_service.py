@@ -2,7 +2,6 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
 import pytest
 
 from app.services import system_service as module
@@ -22,38 +21,6 @@ def system(db, monkeypatch):
                              api_key="unit-key", reset_sensor_logs=AsyncMock())
     monkeypatch.setattr(module, "sensor_client", sensor)
     return service, sensor
-
-
-@pytest.mark.parametrize("status,body,expected", [
-    (200, {"status": "ok", "service": "zeek-sensor-agent"}, "reachable"),
-    (200, {"status": "ok", "service": "unrelated-service"}, "invalid_response"),
-    (200, {"status": "failed", "service": "zeek-sensor-agent"}, "invalid_response"),
-    (200, [], "invalid_response"), (401, {}, "unauthorized"),
-    (403, {}, "unauthorized"), (500, {}, "unreachable"), (404, {}, "unreachable"),
-])
-def test_sensor_health_distinguishes_auth_failure_from_unavailable_and_wrong_service(system, mock_http, status, body, expected):
-    service, _ = system
-    requests = mock_http(lambda request: httpx.Response(status, json=body))
-    assert asyncio.run(service.sensor_status()) == {"status": expected}
-    assert requests[0].url.path == "/health" and requests[0].headers["X-API-Key"] == "unit-key"
-
-
-def test_sensor_invalid_json_has_explicit_status(system, mock_http):
-    mock_http(lambda request: httpx.Response(200, text="not-json"))
-    assert asyncio.run(system[0].sensor_status()) == {"status": "invalid_response"}
-
-
-def test_sensor_timeout_has_unreachable_status(system, mock_http):
-    def timeout(request):
-        raise httpx.ReadTimeout("unit timeout", request=request)
-    mock_http(timeout)
-    assert asyncio.run(system[0].sensor_status()) == {"status": "unreachable"}
-
-
-def test_sample_mode_does_not_probe_network(system):
-    service, sensor = system
-    sensor.mock_mode = True
-    assert asyncio.run(service.sensor_status()) == {"status": "sample_mode"}
 
 
 def test_reset_remote_progress_only_updates_backend_cursors(system):

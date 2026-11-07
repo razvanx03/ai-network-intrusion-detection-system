@@ -3,17 +3,20 @@ import { useI18n, type TranslationKey } from "@/i18n";
 import { errorKey } from "@/services/errors";
 import { Button } from "@/components/ui/button";
 import { LoadingOrb } from "@/components/ui/loading-orb";
+import { PageLoading } from "@/components/page-loading";
 
 export function DataState({
   loading,
   error, 
   hasData,
   retry,
+  pageLoading = false,
 }: {
   loading: boolean;
   error: unknown;
   hasData: boolean;
   retry: () => void;
+  pageLoading?: boolean;
 }) {
   const { t } = useI18n();
   if (error)
@@ -36,6 +39,7 @@ export function DataState({
         </Button>
       </div>
     );
+  if (loading && pageLoading) return <PageLoading />;
   if (loading)
     return (
       <div role="status">

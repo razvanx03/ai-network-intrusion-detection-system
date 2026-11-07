@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database.base import Base
 
@@ -25,6 +25,7 @@ class AnalysisSession(Base):
     records_prepared: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     new_alerts_detected: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_code: Mapped[str | None] = mapped_column(String(32))
+    file_issues: Mapped[list[dict]] = mapped_column(JSON, default=list, server_default=text("'[]'"), nullable=False)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False,
     )

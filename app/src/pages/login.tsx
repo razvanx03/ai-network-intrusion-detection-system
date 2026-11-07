@@ -22,7 +22,7 @@ import { useAuth } from "@/hooks/use-auth";
 export default function LoginPage() {
   const navigate = useNavigate();
   const { t } = useI18n();
-  const { login, sessionExpired } = useAuth();
+  const { login, sessionExpired, error: sessionCheckError } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -72,11 +72,11 @@ export default function LoginPage() {
           </CardHeader>
           <form onSubmit={handleLogin}>
             <CardContent className="space-y-4">
-              {(errorMessage || sessionExpired) && (
+              {(errorMessage || sessionExpired || sessionCheckError) && (
                 <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/60 text-destructive text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span role="alert">
-                    {t(errorMessage ?? "session_expired")}
+                    {t(sessionCheckError ? errorKey(new ApiError(0)) : errorMessage ?? "session_expired")}
                   </span>
                 </div>
               )}
@@ -119,7 +119,7 @@ export default function LoginPage() {
               </div>
             </CardContent>
 
-            <CardFooter className="pt-2">
+            <CardFooter className="flex-col gap-2 pt-2">
               <Button
                 type="submit"
                 className="w-full h-10 gap-2 cursor-pointer"

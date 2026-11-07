@@ -1,4 +1,4 @@
-import { Settings } from "lucide-react";
+import { Languages, Settings, SunMoon } from "lucide-react";
 import { useI18n } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +20,7 @@ export function SettingsDropdown() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>{t("settings_language")}</DropdownMenuLabel>
+        <DropdownMenuLabel className="flex items-center gap-2"><Languages className="size-3.5" aria-hidden="true" />{t("settings_language")}</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={language}
           onValueChange={(value) => {
@@ -35,7 +35,7 @@ export function SettingsDropdown() {
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuLabel>{t("settings_theme")}</DropdownMenuLabel>
+        <DropdownMenuLabel className="flex items-center gap-2"><SunMoon className="size-3.5" aria-hidden="true" />{t("settings_theme")}</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={theme}
           onValueChange={(value) => {

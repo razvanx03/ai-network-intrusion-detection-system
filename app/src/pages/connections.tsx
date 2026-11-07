@@ -1,9 +1,8 @@
 import { useCallback, useRef, useState } from "react";
-import { Terminal, RefreshCw } from "lucide-react";
+import { Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
-  Table,
   TableHeader,
   TableBody,
   TableRow,
@@ -14,15 +13,16 @@ import { Badge } from "@/components/ui/badge";
 import { DataState, OperationNotice, type Notice } from "@/components/data-state";
 import { LoadingOrb } from "@/components/ui/loading-orb";
 import { errorKey } from "@/services/errors";
-import { Pagination } from "@/components/pagination";
+import { PaginatedTable } from "@/components/paginated-table";
 import { useResource } from "@/hooks/use-resource";
 import { useI18n } from "@/i18n";
 import { api } from "@/services/api";
-const PAGE_SIZE = 100;
+import { DEFAULT_PAGE_SIZE } from "@/constants";
 export default function ConnectionsPage() {
   const { t } = useI18n();
   const [proto, setProto] = useState("");
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selected, setSelected] = useState<number[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -30,10 +30,10 @@ export default function ConnectionsPage() {
   const load = useCallback(
     (signal: AbortSignal) =>
       api.getConnections(
-        { proto: proto || undefined, limit: PAGE_SIZE, offset },
+        { proto: proto || undefined, limit: pageSize, offset },
         signal,
       ),
-    [proto, offset],
+    [proto, offset, pageSize],
   );
   const { data, loading, error, refresh } = useResource(load);
   const analyze = async () => {
@@ -53,11 +53,13 @@ export default function ConnectionsPage() {
     }
   };
   const stateBadge = (state: string | null) => {
-    if (state === "SF") return <Badge variant="outline">{t("state_SF")}</Badge>;
-    if (state === "S0")
-      return <Badge variant="outline">{t("state_S0")}</Badge>;
-    if (state === "REJ") return <Badge variant="outline">{t("state_REJ")}</Badge>;
-    return <Badge variant="outline">{state ?? "—"}</Badge>;
+    const label = state === "SF" ? t("state_SF")
+      : state === "S0" ? t("state_S0")
+      : state === "REJ" ? t("state_REJ") : state ?? "—";
+    return <div className="flex min-w-24 flex-col items-start gap-1">
+      <Badge variant="outline" className="whitespace-nowrap">{state ?? "—"}</Badge>
+      {(state === "SF" || state === "S0" || state === "REJ") && <span className="max-w-32 text-xs leading-4 text-muted-foreground">{label}</span>}
+    </div>;
   };
   return (
     <div className="space-y-6">
@@ -66,16 +68,6 @@ export default function ConnectionsPage() {
           <Terminal className="size-5 text-primary" />
           {t("conn_title")}
         </h1>
-        <Button
-          variant="outline"
-          disabled={loading || analyzing}
-          onClick={() => {
-            void refresh();
-          }}
-        >
-          <RefreshCw className="size-4" />
-          {t("btn_refresh")}
-        </Button>
       </div>
       <div
         className="flex flex-wrap gap-1"
@@ -111,7 +103,8 @@ export default function ConnectionsPage() {
         ))}
       </div>
       <DataState
-        loading={loading}
+        pageLoading
+        loading={loading && !data}
         error={error}
         hasData={!!data}
         retry={() => {
@@ -129,12 +122,11 @@ export default function ConnectionsPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {!data.items.length ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">
-                {t("no_connections")}
-              </p>
-            ) : (
-              <Table>
+            <PaginatedTable hasRows={data.items.length > 0} emptyMessage={t("no_connections")} dataLoading={loading}
+              tableClassName="min-w-[68rem] [&_th]:px-3 [&_td]:px-3"
+              offset={data.offset} limit={data.limit} total={data.total} loading={loading || analyzing}
+              onChange={(value) => { setOffset(value); setSelected([]); }}
+              onLimitChange={(value) => { setPageSize(value); setOffset(0); setSelected([]); }}>
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t("selection")}</TableHead>
@@ -179,15 +171,7 @@ export default function ConnectionsPage() {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
-            )}
-            <Pagination
-              offset={data.offset}
-              limit={data.limit}
-              total={data.total}
-              loading={loading}
-              onChange={(value) => { setOffset(value); setSelected([]); }}
-            />
+            </PaginatedTable>
           </CardContent>
         </Card>
       )}

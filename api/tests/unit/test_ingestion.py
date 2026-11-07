@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 from pydantic import ValidationError
 import pytest
 
-from app.integrations.sensor_client import SensorBatch, SensorFile, SensorFileBatch
+from app.integrations.sensor_client import SensorBatch, SensorFile, SensorFileBatch, SensorFileList, SensorFileError
+from app.schemas.sensor import SensorFileIssue
 from app.repositories.sensor_cursor_repository import CursorConflictError, SensorCursorRepository
 from app.services import ingestion_service as module
 from app.services.ingestion_service import IngestionBatch, IngestionService
@@ -17,7 +18,7 @@ def ingestion(db, monkeypatch):
     service.cursors = MagicMock()
     service.connections = MagicMock()
     sensor = SimpleNamespace(mock_mode=False, base_url="https://sensor.invalid",
-        list_files=AsyncMock(return_value=[]), read_file=AsyncMock(),
+        discover_files=AsyncMock(return_value=SensorFileList(files=[])), read_file=AsyncMock(),
         fetch_new_logs=AsyncMock(), acknowledge=AsyncMock())
     monkeypatch.setattr(module, "sensor_client", sensor)
     return service, sensor
@@ -56,7 +57,7 @@ def test_archives_skip_completed_and_resume_partial_before_current_file(ingestio
     service, sensor = ingestion
     files = [SensorFile(file=name, file_id=str(index) * 64, archived=index != 3, first_ts=index)
              for index, name in enumerate(["done.gz", "partial.gz", "current/conn.log"], 1)]
-    sensor.list_files.return_value = files
+    sensor.discover_files.return_value = SensorFileList(files=files)
     service.cursors.get.side_effect = [SimpleNamespace(completed=True, offset=900),
                                        SimpleNamespace(completed=False, offset=100), None]
 
@@ -89,6 +90,31 @@ def test_mock_acknowledgment_waits_until_consumer_resumes(ingestion, raw_record)
             await anext(stream)
         sensor.acknowledge.assert_awaited_once_with("mock-0")
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("invalid_record", [False, True])
+def test_bad_file_is_reported_and_next_file_is_read_without_advancing_bad_cursor(ingestion, raw_record, invalid_record):
+    service, sensor = ingestion
+    files = [SensorFile(file=name, file_id=str(i) * 64, archived=True, first_ts=i)
+             for i, name in enumerate(["broken.log.gz", "healthy.log.gz"], 1)]
+    sensor.discover_files.return_value = SensorFileList(files=files,
+        issues=[SensorFileIssue(file="bad-header.log.gz", code="corrupt_file")])
+    service.cursors.get.return_value = None
+
+    def read(file, offset):
+        if file == files[0] and not invalid_record:
+            raise SensorFileError(SensorFileIssue(file=file.file, code="corrupt_file", offset=offset))
+        records = [{**raw_record, "duration": -1}] if file == files[0] else [raw_record]
+        return SensorFileBatch(file=file.file, file_id=file.file_id, offset=offset,
+            next_offset=100, has_more=False, records_returned=1, records=records)
+    sensor.read_file.side_effect = read
+
+    async def collect():
+        return [batch async for batch in service.batches()]
+    batches = asyncio.run(collect())
+    assert [batch.issue.file for batch in batches if batch.issue] == ["bad-header.log.gz", "broken.log.gz"]
+    assert batches[-1].file == "healthy.log.gz" and batches[-1].records == [raw_record]
+    service.cursors.advance.assert_not_called()
 
 
 def test_abandoned_mock_batch_is_not_acknowledged(ingestion):
@@ -135,3 +161,28 @@ def test_existing_cursor_advance_succeeds_without_committing(db):
     SensorCursorRepository(db).advance("unit", "a" * 64, "conn.log", 100, 200, False)
     db.commit.assert_not_called()
     db.add.assert_not_called()
+
+
+def test_corrupt_tail_preserves_committed_prefix_and_does_not_complete_file(ingestion, raw_record):
+    service, sensor = ingestion
+    file = SensorFile(file="partial.log.gz", file_id="a" * 64, archived=True, first_ts=1)
+    sensor.discover_files.return_value = SensorFileList(files=[file])
+    service.cursors.get.return_value = SimpleNamespace(completed=False, offset=100)
+    sensor.read_file.side_effect = [
+        SensorFileBatch(file=file.file, file_id=file.file_id, offset=100, next_offset=200,
+                        has_more=True, records_returned=1, records=[raw_record]),
+        SensorFileError(SensorFileIssue(file=file.file, code="corrupt_file", offset=200)),
+    ]
+
+    async def consume():
+        batches = []
+        async for batch in service.batches():
+            batches.append(batch)
+            if batch.issue is None:
+                service.persist(batch)
+                service.db.commit()
+        return batches
+    batches = asyncio.run(consume())
+    service.cursors.advance.assert_called_once_with(sensor.base_url, file.file_id, file.file, 100, 200, False)
+    assert batches[1].issue.offset == 200
+    assert service.db.commit.call_count == 1

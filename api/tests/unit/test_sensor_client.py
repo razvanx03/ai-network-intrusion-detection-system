@@ -4,7 +4,7 @@ import json
 import httpx
 import pytest
 
-from app.integrations.sensor_client import SensorClient, SensorFile
+from app.integrations.sensor_client import SensorClient, SensorFile, SensorFileError
 
 
 @pytest.fixture
@@ -23,6 +23,35 @@ def test_file_discovery_sends_api_key_and_validates_metadata(sensor, file, mock_
     assert asyncio.run(sensor.list_files()) == [file]
     assert requests[0].url.path == "/files"
     assert requests[0].headers["X-API-Key"] == "unit-only-sensor-key"
+
+
+def test_discovery_preserves_explicit_file_issues(sensor, file, mock_http):
+    mock_http(lambda _: httpx.Response(200, json={"files": [file.model_dump()],
+        "issues": [{"file": "broken.log.gz", "code": "corrupt_file"}]}))
+    result = asyncio.run(sensor.discover_files())
+    assert result.files == [file] and result.issues[0].file == "broken.log.gz"
+
+
+@pytest.mark.parametrize("code", ["corrupt_file", "unreadable_file", "oversized_file"])
+def test_typed_file_failure_can_be_skipped(sensor, file, mock_http, code):
+    mock_http(lambda _: httpx.Response(422, json={"detail": {"code": code}}))
+    with pytest.raises(SensorFileError) as error:
+        asyncio.run(sensor.read_file(file, 100))
+    assert error.value.issue.code == code
+    assert error.value.issue.offset == 100 and error.value.issue.file == file.file
+
+
+def test_unrecognized_422_remains_a_failure(sensor, file, mock_http):
+    mock_http(lambda _: httpx.Response(422, json={"detail": "Unexpected protocol failure"}))
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(sensor.read_file(file, 100))
+
+
+@pytest.mark.parametrize("status", [401, 403, 409, 500])
+def test_non_file_failures_are_not_skipped(sensor, file, mock_http, status):
+    mock_http(lambda _: httpx.Response(status, json={"detail": {"code": "corrupt_file"}}))
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(sensor.read_file(file, 100))
 
 
 def batch_payload(source_file, **changes):

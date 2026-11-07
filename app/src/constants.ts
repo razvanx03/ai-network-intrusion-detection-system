@@ -17,10 +17,8 @@ export const STORAGE_KEYS = {
   THEME: "nids_theme",
 } as const;
 
-// Polling & Timing Intervals (ms)
-export const TIMING = {
-  DASHBOARD_POLL_INTERVAL: 15000,
-} as const;
+export const PAGE_SIZE_OPTIONS = [10, 50, 100, 200, 500] as const;
+export const DEFAULT_PAGE_SIZE = 50;
 
 // Security Severity Levels
 export const SEVERITIES = {

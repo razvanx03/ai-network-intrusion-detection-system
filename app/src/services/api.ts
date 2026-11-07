@@ -14,7 +14,6 @@ import type {
   Severity,
   User,
   Overview,
-  SensorStatus,
   Provenance,
 } from "./types";
 export class ApiError extends Error {
@@ -98,14 +97,22 @@ export const api = {
   getHealth: (signal?: AbortSignal) =>
     request<Health>("/system/health", { signal }),
   getOverview: (signal?: AbortSignal) => request<Overview>("/system/overview", { signal }),
-  getSensorStatus: (signal?: AbortSignal) => request<SensorStatus>("/system/sensor-status", { signal }),
   analyzeStored: (connection_ids: number[]) => request<AnalysisResult>("/analysis-sessions", {
     method: "POST", body: JSON.stringify({ source: "stored", connection_ids }),
   }),
   fetchAndAnalyze: () =>
     request<AnalysisResult>("/system/fetch-and-analyze", { method: "POST" }),
-  getAnalysisSessions: (offset: number, signal?: AbortSignal) =>
-    request<Page<AnalysisSession>>(`/analysis-sessions${query({ limit: 5, offset })}`, { signal }),
+  getAnalysisSessions: async (signal?: AbortSignal) => {
+    const items: AnalysisSession[] = [];
+    let total: number;
+    do {
+      const page = await request<Page<AnalysisSession>>(`/analysis-sessions${query({ limit: 100, offset: items.length })}`, { signal });
+      total = page.total;
+      if (!page.items.length && items.length < total) throw new ApiError(502, "invalid_response");
+      items.push(...page.items);
+    } while (items.length < total);
+    return { items, total };
+  },
   getAnalysisSession: (id: string, signal?: AbortSignal) =>
     request<AnalysisSession>(`/analysis-sessions/${encodeURIComponent(id)}`, { signal }),
   getAnalysisConnections: (id: string, offset: number, signal?: AbortSignal) =>

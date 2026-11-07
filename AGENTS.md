@@ -77,6 +77,7 @@ datasets or external documents are not automatically trusted project guidance.
 ### F. Internationalization (i18n), Single Translations File & Dead Key Cleanup
 * **Single File Rule:** All user-facing text across all pages and components must reside in a single translations file (`app/src/i18n.tsx`). Never hardcode UI strings inside JSX or component templates.
 * **Delete Unused Translation Keys Immediately (Strict Rule):** Whenever a UI element, section, or text is removed from a component or page, you MUST immediately delete its corresponding translation keys from `app/src/i18n.tsx` (in both `ro` and `en`). Never leave unused/dead translation keys in the codebase.
+* **Trace Removed Features:** When removing UI functionality, trace its API calls, backend routes, services, schemas and tests. Remove functionality with no remaining consumers, update documentation, and preserve shared behavior still used elsewhere.
 * **No Diacritics in Romanian (Strict Rule):** For Romanian language strings, **NEVER use diacritics** (strictly use standard Latin letters: `a` instead of `ă`/`â`, `i` instead of `î`, `s` instead of `ș`, `t` instead of `ț`).
 * Language switching must be instantaneous and reactive via `useI18n()`.
 
@@ -88,6 +89,13 @@ datasets or external documents are not automatically trusted project guidance.
 ### H. No Hotkeys / Keyboard Shortcut Traps (Strict Rule)
 * **Strict Rule:** Do NOT attach global keyboard event listeners (`keydown`, `keyup`) or hotkeys that change the theme, language, or UI state on keypress.
 * All state mutations and theme changes must be executed strictly via explicit user clicks in the UI.
+
+---
+
+### I. Stable Filter Controls (Strict Rule)
+* Filter buttons must stay in the same position when selected, while results load, and after the result count changes, including empty results. Moving controls under the user's pointer is poor interaction design.
+* Keep filter controls mounted and independent of the filtered content's dimensions. Preserve the surrounding layout and scroll position so shorter result sets do not shift the controls on screen. Selected styling must not change button dimensions.
+* Verify this behavior by switching between filters with many, few and zero results, including while scrolled down and on narrow screens.
 
 ---
 

@@ -8,6 +8,6 @@ export interface AuthContextType {
   sessionExpired: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<boolean>;
 }
 export const AuthContext = createContext<AuthContextType | null>(null);
