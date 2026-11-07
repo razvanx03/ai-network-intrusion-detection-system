@@ -1,80 +1,63 @@
 import asyncio
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
-
+from app.services import system_service as module
+from app.services.system_service import SystemService
+from app.schemas.analysis import AnalysisRequest
+from types import SimpleNamespace
+import httpx
 import pytest
 
-from app.services import system_service as module
-from app.services.analysis_service import AnalysisBusyError
-from app.services.system_service import SystemService
+
+def test_manual_fetch_delegates_to_analysis_without_changing_progress(db, monkeypatch):
+    analysis = MagicMock()
+    analysis.run = AsyncMock(return_value={"status": "success"})
+    monkeypatch.setattr(module, "AnalysisService", lambda _: analysis)
+    assert asyncio.run(SystemService(db).fetch_and_analyze(7)) == {"status": "success"}
+    analysis.run.assert_awaited_once_with(7, AnalysisRequest())
+    db.execute.assert_not_called()
 
 
-@pytest.fixture
-def system(db, monkeypatch):
-    service = SystemService(db)
-    service.sessions = MagicMock()
-    service.sessions.running.return_value = None
-    service.conn_repo = MagicMock()
-    service.alert_repo = MagicMock()
-    service.cursor_repo = MagicMock()
-    sensor = SimpleNamespace(mock_mode=False, base_url="https://sensor.invalid",
-                             api_key="unit-key", reset_sensor_logs=AsyncMock())
+def test_overview_delegates_to_active_data_summary(db, monkeypatch):
+    repository = MagicMock()
+    repository.summary.return_value = {"connections_total": 3}
+    monkeypatch.setattr(module, "OverviewRepository", lambda _: repository)
+    assert SystemService(db).overview() == {"connections_total": 3}
+
+
+def test_no_reset_or_delete_operations_remain():
+    assert not hasattr(SystemService, "clear_database_all")
+    assert not hasattr(SystemService, "reset_sensor")
+
+
+@pytest.mark.parametrize("response,expected", [
+    (httpx.Response(200, json={"status": "ok", "service": "zeek-sensor-agent"}), "available"),
+    (httpx.Response(200, json={"status": "ok", "service": "other"}), "invalid_response"),
+    (httpx.Response(200, json=[]), "invalid_response"),
+    (httpx.Response(200, text="invalid json"), "invalid_response"),
+    (httpx.Response(401), "unauthorized"), (httpx.Response(403), "unauthorized"),
+    (httpx.Response(503), "unavailable"),
+])
+def test_sensor_status_reports_probe_results_without_reading_logs(db, monkeypatch, response, expected):
+    sensor = SimpleNamespace(mock_mode=False, health=AsyncMock(return_value=response))
     monkeypatch.setattr(module, "sensor_client", sensor)
-    return service, sensor
+    result = asyncio.run(SystemService(db).sensor_status())
+    assert result["status"] == expected
+    assert result["checked_at"].tzinfo is not None
+    sensor.health.assert_awaited_once()
+    db.execute.assert_not_called()
+    db.commit.assert_not_called()
 
 
-def test_reset_remote_progress_only_updates_backend_cursors(system):
-    service, sensor = system
-    assert asyncio.run(service.reset_sensor())["status"] == "success"
-    service.cursor_repo.reset.assert_called_once_with(sensor.base_url)
-    sensor.reset_sensor_logs.assert_not_awaited()
-    service.db.commit.assert_called_once()
+@pytest.mark.parametrize("host,expected", [("reachable", "unavailable"), ("unreachable", "host_unreachable"), ("unknown", "host_unknown")])
+def test_sensor_timeout_distinguishes_agent_and_host_without_logging_out(db, monkeypatch, host, expected):
+    sensor = SimpleNamespace(mock_mode=False, health=AsyncMock(side_effect=httpx.ConnectTimeout("unit timeout")), host_status=AsyncMock(return_value=host))
+    monkeypatch.setattr(module, "sensor_client", sensor)
+    assert asyncio.run(SystemService(db).sensor_status())["status"] == expected
+    sensor.host_status.assert_awaited_once()
 
 
-def test_reset_sample_progress_does_not_delete_remote_cursors(system):
-    service, sensor = system
-    sensor.mock_mode = True
-    asyncio.run(service.reset_sensor())
-    sensor.reset_sensor_logs.assert_awaited_once()
-    service.cursor_repo.reset.assert_not_called()
-
-
-@pytest.mark.parametrize("operation", ["clear", "reset"])
-def test_destructive_operations_refuse_while_analysis_is_running(system, operation):
-    service, sensor = system
-    service.sessions.running.return_value = object()
-    with pytest.raises(AnalysisBusyError):
-        if operation == "clear":
-            service.clear_database_all()
-        else:
-            asyncio.run(service.reset_sensor())
-    service.sessions.delete_history.assert_not_called()
-    service.cursor_repo.reset.assert_not_called()
-    service.db.commit.assert_not_called()
-    sensor.reset_sensor_logs.assert_not_awaited()
-
-
-def test_clear_database_is_one_transaction_and_preserves_read_progress(system):
-    service, _ = system
-    service.alert_repo.delete_all.return_value = 3
-    service.conn_repo.delete_all.return_value = 10
-    result = service.clear_database_all()
-    assert result["deleted_connections"] == 10 and result["deleted_alerts"] == 3
-    service.alert_repo.delete_all.assert_called_once_with(commit=False)
-    service.conn_repo.delete_all.assert_called_once_with(commit=False)
-    service.cursor_repo.reset.assert_not_called()
-    service.sessions.delete_history.assert_called_once()
-    service.db.commit.assert_called_once()
-
-
-@pytest.mark.parametrize("failure_at", ["history", "alerts", "connections", "commit"])
-def test_clear_database_rolls_back_and_propagates_failures(system, failure_at):
-    service, _ = system
-    operation = {"history": service.sessions.delete_history,
-                 "alerts": service.alert_repo.delete_all,
-                 "connections": service.conn_repo.delete_all,
-                 "commit": service.db.commit}[failure_at]
-    operation.side_effect = RuntimeError("unit write failed")
-    with pytest.raises(RuntimeError, match="unit write failed"):
-        service.clear_database_all()
-    service.db.rollback.assert_called_once()
+def test_sample_mode_does_not_claim_ubuntu_is_operational(db, monkeypatch):
+    sensor = SimpleNamespace(mock_mode=True, health=AsyncMock())
+    monkeypatch.setattr(module, "sensor_client", sensor)
+    assert asyncio.run(SystemService(db).sensor_status())["status"] == "sample_mode"
+    sensor.health.assert_not_awaited()

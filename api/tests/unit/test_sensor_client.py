@@ -18,6 +18,16 @@ def file():
                       archived=True, first_ts=1700000000)
 
 
+def test_health_probe_is_authenticated_bounded_and_does_not_fetch_logs(sensor, mock_http):
+    requests = mock_http(lambda _: httpx.Response(200, json={"status": "ok", "service": "zeek-sensor-agent"}))
+    response = asyncio.run(sensor.health())
+    assert response.status_code == 200 and len(requests) == 1
+    request = requests[0]
+    assert request.method == "GET" and request.url.path == "/health"
+    assert request.headers["X-API-Key"] == "unit-only-sensor-key"
+    assert all(value == 5.0 for value in request.extensions["timeout"].values())
+
+
 def test_file_discovery_sends_api_key_and_validates_metadata(sensor, file, mock_http):
     requests = mock_http(lambda request: httpx.Response(200, json={"files": [file.model_dump()]}))
     assert asyncio.run(sensor.list_files()) == [file]
@@ -117,13 +127,11 @@ def test_sample_progress_requires_acknowledgment(sensor, tmp_path):
         assert (await sensor.fetch_new_logs()).records == [{"uid": "unit-2"}]
         await sensor.acknowledge(first.batch_id)  # Duplicate ACK cannot skip another batch.
         assert sensor._mock_step == 1
-        await sensor.reset_sensor_logs()
-        assert await sensor.fetch_new_logs() == first
     asyncio.run(scenario())
 
 
 @pytest.mark.parametrize("operation,args", [("fetch_new_logs", ()),
-    ("acknowledge", ("batch",)), ("reset_sensor_logs", ())])
+    ("acknowledge", ("batch",))])
 def test_remote_mode_cannot_use_legacy_mock_cursor_operations(sensor, operation, args):
     with pytest.raises(RuntimeError):
         asyncio.run(getattr(sensor, operation)(*args))

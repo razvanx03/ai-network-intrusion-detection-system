@@ -85,3 +85,32 @@ def test_permission_failure_is_reported_as_unreadable(collector, raw_record, mon
         raise PermissionError("unit denied")
     monkeypatch.setattr(collector, "open_log", denied)
     assert collector.list_files()["issues"] == [{"file": "conn.denied.log.gz", "code": "unreadable_file"}]
+
+
+@pytest.mark.parametrize("kind", ["dns", "http", "ssl"])
+def test_protocol_current_stream_keeps_identity_across_gzip_rotation(collector, kind):
+    payload = json.dumps({"uid": "Cunit", "ts": 100, "query": "example.test"}).encode() + b"\n"
+    current = collector.CURRENT_LOG_DIR / f"{kind}.log"
+    current.write_bytes(payload)
+    initial = collector.list_files()["files"][0]
+    assert initial["log_type"] == kind and not initial["archived"]
+    archive(collector, f"2026-01-01/{kind}.00-01.log.gz", payload)
+    current.unlink()
+    rotated = collector.list_files()["files"][0]
+    assert initial["file_id"] == rotated["file_id"] and rotated["archived"]
+    assert collector.read_logs(file=rotated["file"], offset=0, limit=500, file_id=rotated["file_id"])["records"] == [json.loads(payload)]
+
+
+def test_identical_first_records_in_different_log_types_are_not_collapsed(collector, raw_record):
+    payload = json.dumps(raw_record).encode() + b"\n"
+    for kind in ("conn", "dns", "http", "ssl"):
+        (collector.CURRENT_LOG_DIR / f"{kind}.log").write_bytes(payload)
+    files = collector.list_files()["files"]
+    assert len(files) == 4 and len({file["file_id"] for file in files}) == 4
+
+
+def test_unrelated_log_type_is_not_served(collector):
+    (collector.CURRENT_LOG_DIR / "notice.log").write_text('{}\n')
+    with pytest.raises(HTTPException) as exc:
+        collector.resolve_log_file("current/notice.log")
+    assert exc.value.status_code == 400

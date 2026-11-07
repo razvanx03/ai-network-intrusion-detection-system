@@ -1,20 +1,31 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Link, useNavigate } from "@/router";
-import { ShieldAlert, Activity, LogOut, Terminal } from "lucide-react";
+import { Archive, ShieldAlert, Activity, LogOut, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SettingsDropdown } from "@/components/ui/settings-dropdown";
 import { OperationNotice, type Notice } from "@/components/data-state";
 import { useI18n } from "@/i18n";
 import { useAuth } from "@/hooks/use-auth";
+import { UbuntuStatus } from "@/components/ubuntu-status";
+import { SensorSyncProvider } from "@/contexts/SensorSyncProvider";
+import { useSensorSync } from "@/hooks/use-sensor-sync";
+import { errorKey } from "@/services/errors";
 export default function AppLayout({ children }: { children: ReactNode }) {
+  return <SensorSyncProvider><LayoutContent>{children}</LayoutContent></SensorSyncProvider>;
+}
+function LayoutContent({ children }: { children: ReactNode }) {
+  const sync = useSensorSync();
   const navigate = useNavigate();
   const location = useLocation();
-  const contentWidth = location.pathname === "/connections" ? "max-w-[1600px]" : "max-w-7xl";
+  const contentWidth = "max-w-[1600px]";
   const { t } = useI18n();
   const { user, logout } = useAuth();
   const [notice, setNotice] = useState<Notice | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [location.pathname]);
   const handleLogout = async () => {
     setLoggingOut(true);
     setNotice(null);
@@ -29,13 +40,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   };
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-30 border-b bg-card px-4 py-3 sm:px-6">
-        <div className={`mx-auto flex ${contentWidth} flex-wrap items-center justify-between gap-2`}>
-          <Link to="/dashboard" className="flex items-center gap-2 font-bold">
+      <header className="sticky top-0 z-30 border-b bg-card">
+        <div className={`mx-auto w-full ${contentWidth} px-4 sm:px-6`}>
+          <div className="flex h-14 items-center justify-between gap-4">
+          <Link to="/dashboard" className="flex items-center gap-2 font-bold shrink-0">
             <ShieldAlert className="size-5 text-primary" />
             {t("hub_title")}
           </Link>
-          <div className="flex items-center gap-1 sm:gap-3">
+          <div className="flex items-center justify-end gap-1 sm:gap-3 shrink-0">
+            <UbuntuStatus />
             {user && (
               <span className="hidden text-xs text-muted-foreground sm:inline">
                 {user.username}
@@ -54,9 +67,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <LogOut className="size-4" />
             </Button>
           </div>
+          </div>
           <nav
             aria-label={t("navigation")}
-            className="flex w-full items-center gap-1 pt-2"
+            className="flex h-11 items-center gap-1 border-t border-border/40 pb-1 overflow-x-auto"
           >
             <Button
               asChild
@@ -92,10 +106,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 {t("nav_connections")}
               </Link>
             </Button>
+            <Button asChild variant={location.pathname === "/all-data" ? "secondary" : "ghost"} size="sm">
+              <Link to="/all-data" aria-current={location.pathname === "/all-data" ? "page" : undefined}>
+                <Archive className="size-4" />{t("archive_nav")}
+              </Link>
+            </Button>
           </nav>
         </div>
       </header>
-      <main className={`mx-auto w-full ${contentWidth} space-y-4 p-4 sm:p-6`}>
+      <main className={`mx-auto w-full ${contentWidth} min-h-[calc(100vh-6.25rem)] space-y-4 p-4 sm:p-6`}>
+        <OperationNotice notice={sync.error ? { key: errorKey(sync.error), error: true } : null} close={sync.dismissError} />
         <OperationNotice notice={notice} close={() => setNotice(null)} />
         {children}
       </main>

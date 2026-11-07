@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import delete, desc, func, select, update
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.orm import Session
 from app.models.analysis_session import AnalysisSession, AnalysisSessionConnection, AlertConnection
 from app.models.alert import Alert
@@ -22,9 +22,10 @@ class AnalysisRepository:
         self.db.flush()
         return session
 
-    def page(self, limit: int, offset: int):
-        total = self.db.scalar(select(func.count()).select_from(AnalysisSession)) or 0
-        items = self.db.scalars(select(AnalysisSession).order_by(
+    def page(self, limit: int, offset: int, include_archived: bool = False):
+        condition = True if include_archived else AnalysisSession.archive_batch_id.is_(None)
+        total = self.db.scalar(select(func.count()).select_from(AnalysisSession).where(condition)) or 0
+        items = self.db.scalars(select(AnalysisSession).where(condition).order_by(
             desc(AnalysisSession.started_at), desc(AnalysisSession.id),
         ).offset(offset).limit(limit)).all()
         return {"items": list(items), "total": total, "limit": limit, "offset": offset}
@@ -82,8 +83,3 @@ class AnalysisRepository:
         self.db.execute(update(AnalysisSession).where(AnalysisSession.status == "running").values(
             status="interrupted", error_code="server_restarted", finished_at=datetime.now(timezone.utc),
         ))
-
-    def delete_history(self):
-        self.db.execute(delete(AlertConnection))
-        self.db.execute(delete(AnalysisSessionConnection))
-        self.db.execute(delete(AnalysisSession))

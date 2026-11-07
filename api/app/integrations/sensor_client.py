@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 import httpx
 from app.core.config import settings
 from app.schemas.sensor import SensorFileIssue
+from app.schemas.protocol_event import LogType
+from app.integrations.host_probe import probe_host
 
 
 class SensorBatch(BaseModel):
@@ -14,6 +16,7 @@ class SensorBatch(BaseModel):
 
 
 class SensorFile(BaseModel):
+    log_type: LogType = "conn"
     file: str
     file_id: str = Field(min_length=64, max_length=64)
     archived: bool
@@ -68,6 +71,13 @@ class SensorClient:
     async def list_files(self) -> list[SensorFile]:
         return (await self.discover_files()).files
 
+    async def health(self):
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            return await client.get(f"{self.base_url}/health", headers={"X-API-Key": self.api_key})
+
+    async def host_status(self):
+        return await probe_host(self.base_url)
+
     async def discover_files(self) -> SensorFileList:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(f"{self.base_url}/files", headers={"X-API-Key": self.api_key})
@@ -105,14 +115,6 @@ class SensorClient:
             return
         raise RuntimeError("Remote file cursors are committed in the backend database.")
 
-    async def reset_sensor_logs(self) -> bool:
-        """Reset the local mock generator; remote progress belongs to SQLite."""
-        if self.mock_mode:
-            self._mock_step = 0
-            logger.info("Reset mock sensor state to initial step.")
-            return True
-
-        raise RuntimeError("Reset remote cursors through the backend repository.")
 
     def _fetch_mock_logs(self) -> List[Dict[str, Any]]:
         """Simulate incremental batches of Zeek logs (normal -> portscan -> bruteforce)."""

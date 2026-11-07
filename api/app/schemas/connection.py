@@ -53,6 +53,7 @@ class ZeekLogItem(BaseModel):
 
 
 class ConnectionResponse(BaseModel):
+    archive_batch_id: str | None = None
     id: int
     uid: str
     ts: float
@@ -70,12 +71,14 @@ class ConnectionResponse(BaseModel):
     resp_pkts: Optional[int] = 0
     history: Optional[str] = None
     created_at: datetime
+    available_logs: list[str] = Field(default_factory=lambda: ["conn"])
 
     class Config:
         from_attributes = True
 
 
 class ConnectionFilter(BaseModel):
+    include_archived: bool = False
     src_ip: Optional[str] = None
     dst_ip: Optional[str] = None
     proto: Optional[str] = None

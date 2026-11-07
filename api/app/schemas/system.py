@@ -1,5 +1,12 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+from typing import Literal
+from datetime import datetime, timezone
 from app.schemas.analysis import AnalysisSessionResponse
+
+
+class SensorStatusResponse(BaseModel):
+    status: Literal["available", "unavailable", "host_unreachable", "host_unknown", "unauthorized", "invalid_response", "sample_mode"]
+    checked_at: datetime
 
 
 class SystemHealthResponse(BaseModel):
@@ -20,9 +27,6 @@ class FetchAnalyzeResponse(BaseModel):
     analysis_session: AnalysisSessionResponse
 
 
-class SensorResetResponse(BaseModel):
-    status: str
-    message: str
 
 
 class ProtocolCount(BaseModel):
@@ -32,11 +36,12 @@ class ProtocolCount(BaseModel):
 
 class OverviewResponse(BaseModel):
     connections_total: int
-    analyzed_connections: int
-    pending_connections: int
     flagged_connections: int
-    sessions_total: int
-    completed_sessions: int
-    failed_sessions: int
+    last_successful_sync: datetime | None
     running_session_id: str | None
     protocols: list[ProtocolCount]
+
+    @field_validator("last_successful_sync")
+    @classmethod
+    def sync_utc(cls, value):
+        return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value

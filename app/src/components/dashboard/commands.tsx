@@ -1,25 +1,15 @@
 import {
   RefreshCw,
-  Server,
-  Trash2,
   FileSpreadsheet,
   FileCode,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { LoadingOrb } from "@/components/ui/loading-orb";
-import {
-  AlertDialog,
-  AlertDialogTrigger,
-  AlertDialogContent,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from "@/components/ui/alert-dialog";
+import { ArchiveDataButton } from "@/components/archive-data-button";
 import { useI18n } from "@/i18n";
 export type Command =
-  "analyze" | "sensor" | "clear" | "csv" | "json" | "resolve";
+  "analyze" | "archive" | "csv" | "json" | "resolve";
 export function Commands({
   busy,
   run,
@@ -37,9 +27,9 @@ export function Commands({
           <h1 className="text-base font-semibold">{t("console_title")}</h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => run("analyze")} disabled={!!busy || running}>
-            {busy === "analyze" ? (
-              <LoadingOrb state="solving" size={20} text={t("btn_analyzing")} />
+          <Button className="w-full sm:w-80" onClick={() => run("analyze")} disabled={!!busy || running} aria-busy={busy === "analyze" || running}>
+            {busy === "analyze" || running ? (
+              <LoadingOrb state="solving" size={20} text={t("btn_fetching_logs")} />
             ) : (
               <>
                 <RefreshCw className="size-4" />
@@ -47,54 +37,7 @@ export function Commands({
               </>
             )}
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => run("sensor")}
-            disabled={!!busy || running}
-          >
-            {busy === "sensor" ? (
-              <LoadingOrb size={20} text={t("btn_resetting_sensor")} />
-            ) : (
-              <>
-                <Server className="size-4" />
-                {t("btn_reset_sensor")}
-              </>
-            )}
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" disabled={!!busy || running}>
-                {busy === "clear" ? (
-                  <LoadingOrb size={20} text={t("btn_clearing_db")} />
-                ) : (
-                  <>
-                    <Trash2 className="size-4" />
-                    {t("btn_reset_db")}
-                  </>
-                )}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogTitle>{t("clear_title")}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {t("confirm_clear_db")}
-              </AlertDialogDescription>
-              <div className="flex justify-end gap-2">
-                <AlertDialogCancel asChild>
-                  <Button variant="outline">{t("cancel")}</Button>
-                </AlertDialogCancel>
-                <AlertDialogAction asChild>
-                  <Button
-                    variant="destructive"
-                    disabled={!!busy || running}
-                    onClick={() => run("clear")}
-                  >
-                    {t("btn_reset_db")}
-                  </Button>
-                </AlertDialogAction>
-              </div>
-            </AlertDialogContent>
-          </AlertDialog>
+          <ArchiveDataButton busy={busy === "archive"} disabled={!!busy || running} archive={() => run("archive")} />
           <Button variant="ghost" disabled={!!busy} onClick={() => run("csv")}>
             {busy === "csv" ? (
               <LoadingOrb size={20} text={t("btn_exporting")} />

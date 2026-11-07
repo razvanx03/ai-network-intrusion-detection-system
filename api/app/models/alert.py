@@ -8,6 +8,7 @@ from app.database.base import Base
 class Alert(Base):
     __tablename__ = "alerts"
 
+    archive_batch_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     analysis_session_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("analysis_sessions.id", ondelete="SET NULL"), index=True, nullable=True,

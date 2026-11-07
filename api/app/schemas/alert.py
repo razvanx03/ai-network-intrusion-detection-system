@@ -4,6 +4,7 @@ from pydantic import BaseModel, field_validator
 
 
 class AlertResponse(BaseModel):
+    archive_batch_id: str | None = None
     id: int
     timestamp: datetime
     connection_id: Optional[int] = None
@@ -35,6 +36,7 @@ class AlertStatusUpdate(BaseModel):
 
 
 class AlertFilter(BaseModel):
+    include_archived: bool = False
     provenance: Literal["analysis", "legacy_demo"] | None = None
     severity: Optional[str] = None
     attack_type: Optional[str] = None

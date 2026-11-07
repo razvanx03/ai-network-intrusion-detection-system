@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from fastapi.routing import APIRoute
 import pytest
 
-from app.routes import alert_routes, analysis_routes, connection_routes, system_routes
+from app.routes import alert_routes, analysis_routes, connection_routes, system_routes, archive_routes
 from app.routes.deps import get_current_user
 from app.services.analysis_service import AnalysisRunError
 
@@ -31,8 +31,8 @@ def contains_admin_dependency(dependant):
 
 
 @pytest.mark.parametrize("router", [alert_routes.router, analysis_routes.router,
-                                    connection_routes.router, system_routes.router],
-                         ids=["alerts", "analysis", "connections", "system"])
+                                    connection_routes.router, system_routes.router, archive_routes.router],
+                         ids=["alerts", "analysis", "connections", "system", "archives"])
 def test_every_data_and_system_route_declares_admin_authentication(router):
     # Inspect FastAPI's resolved dependency graph without starting the API.
     routes = [route for route in router.routes if isinstance(route, APIRoute)]

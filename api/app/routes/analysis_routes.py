@@ -18,9 +18,9 @@ def run_error(error: AnalysisRunError) -> HTTPException:
     return HTTPException(status, detail={"code": error.code, "analysis_session_id": error.session_id})
 
 
-def require_session(repo: AnalysisRepository, session_id: str):
+def require_session(repo: AnalysisRepository, session_id: str, include_archived: bool = False):
     session = repo.get(session_id)
-    if session is None:
+    if session is None or (getattr(session, "archive_batch_id", None) is not None and not include_archived):
         raise HTTPException(404, "Analysis session not found.")
     return session
 
@@ -36,22 +36,22 @@ async def start_analysis(body: AnalysisRequest, user: User = Depends(get_current
 
 
 @router.get("")
-def list_sessions(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
-    page = AnalysisRepository(db).page(limit, offset)
+def list_sessions(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0), include_archived: bool = Query(False), db: Session = Depends(get_db)):
+    page = AnalysisRepository(db).page(limit, offset, include_archived)
     page["items"] = [AnalysisSessionResponse.model_validate(item) for item in page["items"]]
     return page
 
 
 @router.get("/{session_id}", response_model=AnalysisSessionResponse)
-def get_session(session_id: str, db: Session = Depends(get_db)):
-    return require_session(AnalysisRepository(db), session_id)
+def get_session(session_id: str, include_archived: bool = Query(False), db: Session = Depends(get_db)):
+    return require_session(AnalysisRepository(db), session_id, include_archived)
 
 
 @router.get("/{session_id}/connections")
 def session_connections(session_id: str, limit: int = Query(50, ge=1, le=500),
-                        offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
+                        offset: int = Query(0, ge=0), include_archived: bool = Query(False), db: Session = Depends(get_db)):
     repo = AnalysisRepository(db)
-    require_session(repo, session_id)
+    require_session(repo, session_id, include_archived)
     rows, total = repo.connection_page(session_id, limit, offset)
     return {
         "items": [{"connection": ConnectionResponse.model_validate(connection),
@@ -62,9 +62,9 @@ def session_connections(session_id: str, limit: int = Query(50, ge=1, le=500),
 
 @router.get("/{session_id}/alerts")
 def session_alerts(session_id: str, limit: int = Query(50, ge=1, le=500),
-                   offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
+                   offset: int = Query(0, ge=0), include_archived: bool = Query(False), db: Session = Depends(get_db)):
     repo = AnalysisRepository(db)
-    require_session(repo, session_id)
+    require_session(repo, session_id, include_archived)
     alerts, total = repo.alert_page(session_id, limit, offset)
     return {"items": [AlertResponse.model_validate(alert) for alert in alerts],
             "total": total, "limit": limit, "offset": offset}
@@ -72,7 +72,8 @@ def session_alerts(session_id: str, limit: int = Query(50, ge=1, le=500),
 
 @router.get("/{session_id}/alerts/{alert_id}/connections")
 def alert_sources(session_id: str, alert_id: int, limit: int = Query(50, ge=1, le=500),
-                  offset: int = Query(0, ge=0), db: Session = Depends(get_db)):
+                  offset: int = Query(0, ge=0), include_archived: bool = Query(False), db: Session = Depends(get_db)):
+    require_session(AnalysisRepository(db), session_id, include_archived)
     result = AnalysisRepository(db).alert_connections(session_id, alert_id, limit, offset)
     if result is None:
         raise HTTPException(404, "Alert not found in this analysis session.")

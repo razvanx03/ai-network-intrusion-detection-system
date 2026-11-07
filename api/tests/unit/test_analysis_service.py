@@ -64,6 +64,19 @@ def stored_request():
     return AnalysisRequest(source="stored", connection_ids=[1])
 
 
+def test_protocol_context_is_committed_without_calling_classifier(analysis):
+    service, detector, _ = analysis
+    async def batches():
+        yield IngestionBatch(records=[{"uid": "Cunit", "ts": 100, "query": "example.test"}], log_type="dns")
+    service.ingestion.batches = batches
+    service.ingestion.persist.return_value = []
+    result = asyncio.run(service.run(7, AnalysisRequest(source="sensor")))
+    detector.analyze_batch.assert_not_called()
+    service.sessions.record_batch.assert_not_called()
+    assert result["new_connections_ingested"] == 0 and result["new_alerts_detected"] == 0
+    assert result["analysis_session"].status == "completed"
+
+
 def test_stored_analysis_reuses_records_and_emits_traceable_finding(analysis, connection_factory):
     service, detector, _ = analysis
     connection = connection_factory()

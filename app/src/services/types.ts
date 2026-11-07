@@ -10,6 +10,7 @@ export type AlertStatus =
   "NEW" | "ACKNOWLEDGED" | "RESOLVED" | "FALSE_POSITIVE";
 export type Provenance = "analysis" | "legacy_demo";
 export interface Alert {
+  archive_batch_id: string | null;
   id: number;
   timestamp: string;
   connection_id: number | null;
@@ -27,6 +28,8 @@ export interface Alert {
   status: AlertStatus;
 }
 export interface Connection {
+  archive_batch_id: string | null;
+  available_logs: ("conn" | "dns" | "http" | "ssl")[];
   id: number;
   uid: string;
   ts: number;
@@ -44,6 +47,14 @@ export interface Connection {
   resp_pkts: number | null;
   history: string | null;
   created_at: string;
+}
+export type ContextType = "dns" | "http" | "ssl";
+export interface ProtocolEvent {
+  id: string;
+  uid: string;
+  log_type: ContextType;
+  ts: number;
+  fields: Record<string, string | number | boolean | null | (string | number | boolean | null)[]>;
 }
 export interface Page<T> {
   items: T[];
@@ -64,12 +75,8 @@ export interface AlertStats {
 }
 export interface Overview {
   connections_total: number;
-  analyzed_connections: number;
-  pending_connections: number;
   flagged_connections: number;
-  sessions_total: number;
-  completed_sessions: number;
-  failed_sessions: number;
+  last_successful_sync: string | null;
   running_session_id: string | null;
   protocols: { proto: string; count: number }[];
 }
@@ -80,6 +87,10 @@ export interface Health {
   connections_total: number;
   alerts_total: number;
   legacy_alerts_total: number;
+}
+export interface SensorStatus {
+  status: "available" | "unavailable" | "host_unreachable" | "host_unknown" | "unauthorized" | "invalid_response" | "sample_mode";
+  checked_at: string;
 }
 export interface Operation {
   status: string;
@@ -97,6 +108,7 @@ export interface SensorFileIssue {
   offset: number | null;
 }
 export interface AnalysisSession {
+  archive_batch_id: string | null;
   id: string;
   source: "sensor" | "stored";
   status: "running" | "completed" | "failed" | "interrupted";
@@ -118,7 +130,11 @@ export interface AnalysisConnection {
   file_id: string | null;
   file: string | null;
 }
-export interface ClearResult extends Operation {
-  deleted_connections: number;
-  deleted_alerts: number;
+export interface ArchiveBatch {
+  id: string;
+  created_at: string;
+  restored_at: string | null;
+  connections: number;
+  alerts: number;
+  sessions: number;
 }

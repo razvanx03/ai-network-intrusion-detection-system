@@ -6,7 +6,7 @@ import type {
   AnalysisResult,
   AnalysisSession,
   AnalysisConnection,
-  ClearResult,
+  ArchiveBatch,
   Connection,
   Health,
   Operation,
@@ -15,6 +15,9 @@ import type {
   User,
   Overview,
   Provenance,
+  ContextType,
+  ProtocolEvent,
+  SensorStatus,
 } from "./types";
 export class ApiError extends Error {
   readonly status: number;
@@ -79,7 +82,7 @@ async function request<T>(
     throw new ApiError(502);
   }
 }
-function query(params: Record<string, string | number | undefined>) {
+function query(params: Record<string, string | number | boolean | undefined>) {
   const result = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== "") result.set(key, String(value));
@@ -87,6 +90,9 @@ function query(params: Record<string, string | number | undefined>) {
   return `?${result}`;
 }
 export const api = {
+  getSensorStatus: (signal?: AbortSignal) => request<SensorStatus>("/system/sensor-status", { signal }),
+  getConnectionEvents: (id: number, kind: ContextType, offset: number, signal?: AbortSignal, includeArchived = false) =>
+    request<Page<ProtocolEvent>>(`/logs/connections/${id}/events${query({ kind, limit: 50, offset, include_archived: includeArchived })}`, { signal }),
   login: (username: string, password: string) =>
     request<{ user: User; expires_in_minutes: number }>("/auth/login", {
       method: "POST",
@@ -102,31 +108,30 @@ export const api = {
   }),
   fetchAndAnalyze: () =>
     request<AnalysisResult>("/system/fetch-and-analyze", { method: "POST" }),
-  getAnalysisSessions: async (signal?: AbortSignal) => {
+  getAnalysisSessions: async (signal?: AbortSignal, includeArchived = false) => {
     const items: AnalysisSession[] = [];
     let total: number;
     do {
-      const page = await request<Page<AnalysisSession>>(`/analysis-sessions${query({ limit: 100, offset: items.length })}`, { signal });
+      const page = await request<Page<AnalysisSession>>(`/analysis-sessions${query({ limit: 100, offset: items.length, include_archived: includeArchived })}`, { signal });
       total = page.total;
       if (!page.items.length && items.length < total) throw new ApiError(502, "invalid_response");
       items.push(...page.items);
     } while (items.length < total);
     return { items, total };
   },
-  getAnalysisSession: (id: string, signal?: AbortSignal) =>
-    request<AnalysisSession>(`/analysis-sessions/${encodeURIComponent(id)}`, { signal }),
-  getAnalysisConnections: (id: string, offset: number, signal?: AbortSignal) =>
-    request<Page<AnalysisConnection>>(`/analysis-sessions/${encodeURIComponent(id)}/connections${query({ limit: 10, offset })}`, { signal }),
-  getAnalysisAlerts: (id: string, offset: number, signal?: AbortSignal) =>
-    request<Page<Alert>>(`/analysis-sessions/${encodeURIComponent(id)}/alerts${query({ limit: 5, offset })}`, { signal }),
-  resetSensor: () =>
-    request<Operation>("/system/reset-sensor", { method: "POST" }),
-  getAlertConnections: (session: string, id: number, offset: number, signal?: AbortSignal) =>
-    request<Page<Connection>>(`/analysis-sessions/${encodeURIComponent(session)}/alerts/${id}/connections${query({ limit: 10, offset })}`, { signal }),
-  clearDatabase: () =>
-    request<ClearResult>("/system/clear-database", { method: "POST" }),
+  getAnalysisSession: (id: string, signal?: AbortSignal, includeArchived = false) =>
+    request<AnalysisSession>(`/analysis-sessions/${encodeURIComponent(id)}${query({ include_archived: includeArchived })}`, { signal }),
+  getAnalysisConnections: (id: string, offset: number, signal?: AbortSignal, includeArchived = false) =>
+    request<Page<AnalysisConnection>>(`/analysis-sessions/${encodeURIComponent(id)}/connections${query({ limit: 10, offset, include_archived: includeArchived })}`, { signal }),
+  getAnalysisAlerts: (id: string, offset: number, signal?: AbortSignal, includeArchived = false) =>
+    request<Page<Alert>>(`/analysis-sessions/${encodeURIComponent(id)}/alerts${query({ limit: 5, offset, include_archived: includeArchived })}`, { signal }),
+  getAlertConnections: (session: string, id: number, offset: number, signal?: AbortSignal, includeArchived = false) =>
+    request<Page<Connection>>(`/analysis-sessions/${encodeURIComponent(session)}/alerts/${id}/connections${query({ limit: 10, offset, include_archived: includeArchived })}`, { signal }),
+  archiveDatabase: () => request<ArchiveBatch>("/archives", { method: "POST" }),
+  restoreArchive: (id: string) => request<ArchiveBatch>(`/archives/${encodeURIComponent(id)}/restore`, { method: "POST" }),
+  getArchives: (offset: number, signal?: AbortSignal) => request<Page<ArchiveBatch>>(`/archives${query({ limit: 10, offset })}`, { signal }),
   getAlerts: (
-    params: { severity?: Severity; status?: AlertStatus; provenance?: Provenance; limit?: number; offset?: number } = {},
+    params: { include_archived?: boolean; severity?: Severity; status?: AlertStatus; provenance?: Provenance; limit?: number; offset?: number } = {},
     signal?: AbortSignal,
   ) => request<Page<Alert>>(`/alerts${query(params)}`, { signal }),
   getAlertStats: (signal?: AbortSignal) =>
@@ -137,7 +142,7 @@ export const api = {
       body: JSON.stringify({ status }),
     }),
   getConnections: (
-    params: { proto?: string; limit?: number; offset?: number } = {},
+    params: { include_archived?: boolean; proto?: string; limit?: number; offset?: number } = {},
     signal?: AbortSignal,
   ) =>
     request<Page<Connection>>(`/logs/connections${query(params)}`, { signal }),

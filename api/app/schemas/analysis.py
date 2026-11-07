@@ -21,6 +21,7 @@ class AnalysisRequest(BaseModel):
 
 
 class AnalysisSessionResponse(BaseModel):
+    archive_batch_id: str | None = None
     model_config = ConfigDict(from_attributes=True)
     id: str
     source: str

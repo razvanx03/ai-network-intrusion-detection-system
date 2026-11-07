@@ -12,6 +12,7 @@ class AnalysisSession(Base):
         postgresql_where=text("status = 'running'"),
     ),)
 
+    archive_batch_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     requested_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     source: Mapped[str] = mapped_column(String(16), nullable=False)

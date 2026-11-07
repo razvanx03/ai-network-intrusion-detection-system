@@ -19,6 +19,7 @@ def get_alerts(
     provenance: Literal["analysis", "legacy_demo"] | None = Query(None),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    include_archived: bool = Query(False),
     db: Session = Depends(get_db)
 ):
     """List intrusion detection alerts with filtering and pagination."""
@@ -30,7 +31,8 @@ def get_alerts(
         status=status,
         src_ip=src_ip,
         limit=limit,
-        offset=offset
+        offset=offset,
+        include_archived=include_archived
     )
     items, total = service.get_alerts(filters)
     return {

@@ -19,6 +19,7 @@ class AlertService:
             limit=filters.limit,
             offset=filters.offset,
             provenance=filters.provenance,
+            include_archived=filters.include_archived,
         )
 
     def get_stats(self, provenance: str | None = None) -> Dict[str, Any]:

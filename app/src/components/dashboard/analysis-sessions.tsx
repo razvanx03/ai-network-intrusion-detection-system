@@ -30,24 +30,25 @@ const errorLabels: Record<string, TranslationKey> = {
   request_interrupted: "analysis_error_interrupted",
 };
 
-export function AnalysisSessions({ inspect, refreshVersion = 0 }: { inspect: (alert: Alert) => void; refreshVersion?: number }) {
+export function AnalysisSessions({ inspect, refreshVersion = 0, includeArchived = false }: { inspect: (alert: Alert) => void; refreshVersion?: number; includeArchived?: boolean }) {
   const { t, language } = useI18n();
   const [selected, setSelected] = useState<string | null>(null);
   const [recordOffset, setRecordOffset] = useState(0);
   const [alertOffset, setAlertOffset] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const load = useCallback(async (signal: AbortSignal) => {
-    const history = await api.getAnalysisSessions(signal);
+    const history = await api.getAnalysisSessions(signal, includeArchived);
     const session = selected && history.total > 0
-      ? await api.getAnalysisSession(selected, signal)
+      ? await api.getAnalysisSession(selected, signal, includeArchived)
       : history.items[0] ?? null;
     const details = session && expanded ? await Promise.all([
-      api.getAnalysisConnections(session.id, recordOffset, signal),
-      api.getAnalysisAlerts(session.id, alertOffset, signal),
+      api.getAnalysisConnections(session.id, recordOffset, signal, includeArchived),
+      api.getAnalysisAlerts(session.id, alertOffset, signal, includeArchived),
     ]) : null;
     return { history, session, details, query: { selected, recordOffset, alertOffset, refreshVersion } };
-  }, [selected, recordOffset, alertOffset, expanded, refreshVersion]);
-  const resource = useResource(load);
+  }, [selected, recordOffset, alertOffset, expanded, refreshVersion, includeArchived]);
+  const cacheKey = `sessions:${includeArchived}:${selected}:${recordOffset}:${alertOffset}:${expanded}`;
+  const resource = useResource(load, true, refreshVersion, cacheKey);
   const data = resource.data;
   const sessionLoading = resource.loading && (!data || data.query.selected !== selected || data.query.refreshVersion !== refreshVersion);
   const recordsLoading = resource.loading && (sessionLoading || !data?.details || data.query.recordOffset !== recordOffset);
@@ -69,6 +70,7 @@ export function AnalysisSessions({ inspect, refreshVersion = 0 }: { inspect: (al
             >
               <span className="font-mono">{session.id.slice(0, 8)}</span>
               {t(`analysis_status_${session.status}`)}
+              {includeArchived && <span>{t(session.archive_batch_id ? "archive_archived" : "archive_active")}</span>}
             </Button>)}
           </div>
         </>}

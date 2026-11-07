@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.database.session import SessionLocal
 from app.database.seed import init_db
+from app.routes.archive_routes import router as archive_router
 from app.routes.auth_routes import router as auth_router
 from app.routes.connection_routes import router as connection_router
 from app.routes.alert_routes import router as alert_router
@@ -55,6 +56,7 @@ app.add_middleware(
 
 # Register API routers
 prefix = settings.API_PREFIX
+app.include_router(archive_router, prefix=prefix)
 app.include_router(auth_router, prefix=prefix)
 app.include_router(connection_router, prefix=prefix)
 app.include_router(alert_router, prefix=prefix)

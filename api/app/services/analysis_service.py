@@ -77,6 +77,11 @@ class AnalysisService:
                         continue
                     phase = "invalid_records"
                     connections = self.ingestion.persist(batch)
+                    if batch.log_type != "conn":
+                        # Context enriches records; it is never input to the selected classifier.
+                        self.db.commit()
+                        phase = "sensor_unavailable"
+                        continue
                     phase = "detector_failed"
                     self._process(session_id, connections, len(batch.records), len(connections),
                                   detector, summary, batch)

@@ -50,7 +50,7 @@ if not 1024 <= MAX_BYTES <= 16 * 1024 * 1024:
 if not 1024 <= MAX_LINE_BYTES <= MAX_BYTES:
     raise RuntimeError("MAX_LINE_BYTES must be between 1 KiB and MAX_BATCH_BYTES.")
 
-app = FastAPI(title="Zeek Sensor Agent", version="2.3.0")
+app = FastAPI(title="Zeek Sensor Agent", version="2.4.0")
 
 
 def authenticate(x_api_key: str | None = Header(default=None)):
@@ -64,7 +64,7 @@ def resolve_log_file(file: str) -> Path:
     if relative.is_absolute() or ".." in relative.parts:
         raise HTTPException(status_code=400, detail="Invalid log path.")
 
-    if not file.endswith((".log", ".log.gz")):
+    if relative.name.split(".", 1)[0] not in ("conn", "dns", "http", "ssl") or not file.endswith((".log", ".log.gz")):
         raise HTTPException(
             status_code=400,
             detail="Only .log and .log.gz files are supported.",
@@ -134,7 +134,7 @@ def stream_identity(stream: BinaryIO, sealed: bool = False) -> tuple[str, float]
         record = parse_record(line)
         if record is not None:
             if "uid" not in record or "ts" not in record:
-                raise HTTPException(status_code=422, detail="Expected a conn.log record.")
+                raise HTTPException(status_code=422, detail="Expected a UID-linked Zeek record.")
             try:
                 first_ts = float(record["ts"])
             except (ValueError, TypeError) as exc:
@@ -148,16 +148,19 @@ def stream_identity(stream: BinaryIO, sealed: bool = False) -> tuple[str, float]
 
 @app.get("/files", dependencies=[Depends(authenticate)])
 def list_files():
-    """List connection streams only; summary logs are not connection records."""
-    candidates = [
-        (path.relative_to(LOG_DIR).as_posix(), path, True)
-        for path in (*LOG_DIR.rglob("conn.*.log*"), *LOG_DIR.rglob("conn.log"))
-        if path.name.endswith((".log", ".log.gz"))
-        and path.relative_to(LOG_DIR).parts[0] != "current"
-    ]
-    current = CURRENT_LOG_DIR / "conn.log"
-    if current.exists():
-        candidates.append(("current/conn.log", current, False))
+    """Discover connection and UID-linked protocol streams, including archives."""
+    candidates = []
+    for kind in ("conn", "dns", "http", "ssl"):
+        candidates.extend(
+            (path.relative_to(LOG_DIR).as_posix(), path, True)
+            for pattern in (f"{kind}.*.log*", f"{kind}.log", f"{kind}.log.gz")
+            for path in LOG_DIR.rglob(pattern)
+            if path.name.endswith((".log", ".log.gz"))
+            and path.relative_to(LOG_DIR).parts[0] != "current"
+        )
+        current = CURRENT_LOG_DIR / f"{kind}.log"
+        if current.exists():
+            candidates.append((f"current/{kind}.log", current, False))
     files = {}
     issues = []
     # A bad file must not hide healthy streams during discovery.
@@ -169,9 +172,12 @@ def list_files():
             if identity is None:
                 continue
             file_id, first_ts = identity
+            kind = path.name.split(".", 1)[0]
+            if kind != "conn":
+                file_id = hashlib.sha256(f"{kind}:{file_id}".encode()).hexdigest()
             if file_id not in files or archived:
                 files[file_id] = {
-                    "file": name, "file_id": file_id, "archived": archived,
+                    "file": name, "file_id": file_id, "archived": archived, "log_type": kind,
                     "first_ts": first_ts,
                 }
         except HTTPException as exc:
@@ -216,6 +222,9 @@ def read_logs(
             archived = not file.startswith("current/")
             identity = stream_identity(stream, sealed=archived)
             actual_id = identity[0] if identity else None
+            kind = path.name.split(".", 1)[0]
+            if actual_id is not None and kind != "conn":
+                actual_id = hashlib.sha256(f"{kind}:{actual_id}".encode()).hexdigest()
             if file_id is not None and actual_id != file_id:
                 raise HTTPException(status_code=409, detail="Log rotated; refresh the file list.")
             try:

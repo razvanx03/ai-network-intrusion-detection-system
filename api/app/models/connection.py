@@ -8,6 +8,7 @@ from app.database.base import Base
 class Connection(Base):
     __tablename__ = "connections"
 
+    archive_batch_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     uid: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     ts: Mapped[float] = mapped_column(Float, index=True, nullable=False)

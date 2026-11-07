@@ -1,5 +1,6 @@
 from app.routes.deps import get_current_user
 from typing import List, Optional
+from app.schemas.protocol_event import ContextType, ProtocolEventResponse
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from app.core.constants import CONNECTION_ROUTE_PREFIX
@@ -18,6 +19,7 @@ def get_connections(
     conn_state: Optional[str] = Query(None, description="Filter by Zeek connection state"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    include_archived: bool = Query(False),
     db: Session = Depends(get_db)
 ):
     """Retrieve ingested Zeek network flow records with pagination and filters."""
@@ -28,11 +30,12 @@ def get_connections(
         proto=proto,
         conn_state=conn_state,
         limit=limit,
-        offset=offset
+        offset=offset,
+        include_archived=include_archived
     )
     items, total = service.get_connections(filters)
     return {
-        "items": [ConnectionResponse.model_validate(c) for c in items],
+        "items": service.with_context(items),
         "total": total,
         "limit": limit,
         "offset": offset
@@ -46,3 +49,12 @@ def get_log_stats(db: Session = Depends(get_db)):
     return {
         "total_connections": service.count_total()
     }
+
+
+@router.get("/connections/{connection_id}/events")
+def get_connection_events(connection_id: int, kind: ContextType,
+                          limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0),
+                          include_archived: bool = Query(False), db: Session = Depends(get_db)):
+    page = ConnectionService(db).events(connection_id, kind, limit, offset, include_archived)
+    page["items"] = [ProtocolEventResponse.model_validate(item) for item in page["items"]]
+    return page

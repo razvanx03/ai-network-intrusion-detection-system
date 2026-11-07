@@ -13,8 +13,8 @@ from app.repositories.alert_repository import AlertRepository
 from app.schemas.system import (
     SystemHealthResponse,
     FetchAnalyzeResponse,
-    SensorResetResponse,
     OverviewResponse,
+    SensorStatusResponse,
 )
 from app.services.system_service import SystemService
 from app.repositories.sensor_cursor_repository import CursorConflictError
@@ -28,6 +28,11 @@ router = APIRouter(prefix=SYSTEM_ROUTE_PREFIX, tags=["System & Sensor Operations
 @router.get("/overview", response_model=OverviewResponse)
 def overview(db: Session = Depends(get_db)):
     return SystemService(db).overview()
+
+
+@router.get("/sensor-status", response_model=SensorStatusResponse)
+async def sensor_status(db: Session = Depends(get_db)):
+    return await SystemService(db).sensor_status()
 
 
 @router.post("/fetch-and-analyze", response_model=FetchAnalyzeResponse)
@@ -47,24 +52,8 @@ async def fetch_and_analyze(user: User = Depends(get_current_user), db: Session 
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.post("/reset-sensor", response_model=SensorResetResponse)
-async def reset_sensor(db: Session = Depends(get_db)):
-    """Reset read cursors on the remote Zeek sensor (or reset mock stream)."""
-    service = SystemService(db)
-    try:
-        return await service.reset_sensor()
-    except AnalysisBusyError as exc:
-        raise HTTPException(409, "Wait for the running analysis.") from exc
 
 
-@router.post("/clear-database")
-def clear_database(db: Session = Depends(get_db)):
-    """Wipe connections and alerts from local SQLite DB for a clean demo run."""
-    service = SystemService(db)
-    try:
-        return service.clear_database_all()
-    except AnalysisBusyError as exc:
-        raise HTTPException(409, "Wait for the running analysis.") from exc
 
 
 @router.get("/health", response_model=SystemHealthResponse)

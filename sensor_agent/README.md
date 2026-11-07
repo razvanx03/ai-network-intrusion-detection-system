@@ -1,8 +1,17 @@
 # Zeek sensor agent
 
-The backend pulls connection logs on demand. `collector.py` is the authenticated,
+The backend pulls connection and DNS/HTTP/TLS logs on demand. `collector.py` is the authenticated,
 read-only HTTP reader running on Ubuntu; the main API, database and AI inference
 remain on the Windows host. Ingestion progress belongs to backend SQLite.
+
+Collector 2.4 discovers `conn.log`, `dns.log`, `http.log`, `ssl.log` and their
+retained JSON/gzip archives. `/files` reports each stream's `log_type`; `/logs`
+keeps the same byte-offset protocol. Connection stream IDs remain compatible with
+existing cursors; protocol stream IDs include their log type. Upgrade collector
+and backend together. Copy the updated collector to the path used by the existing
+`nids-sensor.service` and restart that service, or use the unified setup for a new
+VM. No Zeek policy change is needed when its standard DNS, HTTP and TLS JSON logs
+are already enabled. Unavailable/deleted protocol logs cannot be reconstructed.
 
 ## One-command Ubuntu VM setup
 
@@ -155,11 +164,11 @@ HTTPS because HTTP sends the API key without transport encryption.
 ## Protocol and recovery
 
 - Every agent endpoint requires `X-API-Key`, including `GET /health`.
-- `GET /files` discovers current and retained archived connection streams, excluding
-  summary logs. Entries contain `file`, `file_id`, `archived`, and `first_ts`.
+- `GET /files` discovers current and retained archived connection, DNS, HTTP and TLS
+  streams, excluding unrelated log types. Entries contain `file`, `file_id`, `archived`, `log_type` and `first_ts`.
   The response also contains `issues` for files that cannot be discovered safely.
   Each issue supplies a relative filename and a stable code, without raw log data.
-- `file_id` is a digest of the first complete connection record. Rename and gzip
+- `file_id` is a digest of the first complete record (namespaced for protocol context). Rename and gzip
   compression preserve it, including when the active file becomes an archive.
 - `GET /logs?file=...&file_id=...&offset=...&limit=500` returns `records`,
   `next_offset`, `has_more`, and identity metadata. Offsets count **uncompressed bytes**
@@ -183,9 +192,9 @@ HTTPS because HTTP sends the API key without transport encryption.
   from its retained cursor on the next manual fetch. No original log is changed
   or deleted. Connection/authentication failures and invalid transport contracts
   still fail the operation rather than masquerading as an empty sensor.
-- The backend reset-cursor operation clears that sensor's SQLite progress without
-  modifying VM logs. Re-reading retained logs deduplicates existing connection UIDs.
-  Clearing connections/alerts alone leaves cursors intact; reset cursors too to re-import.
+- Archiving/restoring backend data never resets SQLite cursors or changes VM logs.
+  The application exposes no reset-cursor or destructive database-clear operation.
+  Archived UIDs remain deduplicated; use All data to restore an archive batch.
 - There is no agent `/logs/ack` or `DELETE /logs` endpoint in this protocol.
 - Retain archives longer than the maximum interval between successful pulls. Deleted
   unread files cannot be recovered. Do not edit historical files or use copy-truncate

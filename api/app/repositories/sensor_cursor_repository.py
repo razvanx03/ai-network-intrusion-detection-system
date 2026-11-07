@@ -1,4 +1,4 @@
-from sqlalchemy import delete, update
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 from app.models.sensor_cursor import SensorCursor
 
@@ -33,6 +33,3 @@ class SensorCursorRepository:
         )
         if result.rowcount != 1:
             raise CursorConflictError("Sensor cursor changed; retry the operation.")
-
-    def reset(self, sensor_url: str) -> None:
-        self.db.execute(delete(SensorCursor).where(SensorCursor.sensor_url == sensor_url))

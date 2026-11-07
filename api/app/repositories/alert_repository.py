@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple, Dict, Any
-from sqlalchemy import select, func, desc, delete
+from sqlalchemy import select, func, desc
 from sqlalchemy.orm import Session
 from app.models.alert import Alert
 from app.models.analysis_session import AlertConnection
@@ -32,9 +32,14 @@ class AlertRepository(BaseRepository[Alert]):
         limit: int = 50,
         offset: int = 0,
         provenance: str | None = None,
+        include_archived: bool = False,
     ) -> Tuple[List[Alert], int]:
         stmt = select(Alert)
         count_stmt = select(func.count(Alert.id))
+
+        if not include_archived:
+            stmt = stmt.where(Alert.archive_batch_id.is_(None))
+            count_stmt = count_stmt.where(Alert.archive_batch_id.is_(None))
 
         if provenance:
             stmt = stmt.where(Alert.provenance == provenance)
@@ -60,20 +65,22 @@ class AlertRepository(BaseRepository[Alert]):
 
     def update_status(self, alert_id: int, new_status: str) -> Optional[Alert]:
         alert = self.get(alert_id)
-        if alert:
+        if alert and alert.archive_batch_id is None:
             alert.status = new_status.upper()
             self.db.commit()
             self.db.refresh(alert)
-        return alert
+        return alert if alert and alert.archive_batch_id is None else None
 
     def count_total(self) -> int:
-        return self.db.scalar(select(func.count(Alert.id))) or 0
+        return self.db.scalar(select(func.count(Alert.id)).where(Alert.archive_batch_id.is_(None))) or 0
 
     def count_legacy(self) -> int:
-        return self.db.scalar(select(func.count(Alert.id)).where(Alert.provenance == "legacy_demo")) or 0
+        return self.db.scalar(select(func.count(Alert.id)).where(Alert.provenance == "legacy_demo", Alert.archive_batch_id.is_(None))) or 0
 
     def get_stats(self, provenance: str | None = None) -> Dict[str, Any]:
-        condition = Alert.provenance == provenance if provenance else True
+        condition = Alert.archive_batch_id.is_(None)
+        if provenance:
+            condition = condition & (Alert.provenance == provenance)
         total = self.db.scalar(select(func.count(Alert.id)).where(condition)) or 0
         
         # Severity breakdown
@@ -120,15 +127,9 @@ class AlertRepository(BaseRepository[Alert]):
         }
 
     def get_all_for_export(self, severity: Optional[str] = None, provenance: str | None = None) -> List[Alert]:
-        stmt = select(Alert).order_by(desc(Alert.timestamp))
+        stmt = select(Alert).where(Alert.archive_batch_id.is_(None)).order_by(desc(Alert.timestamp))
         if provenance:
             stmt = stmt.where(Alert.provenance == provenance)
         if severity:
             stmt = stmt.where(Alert.severity == severity.upper())
         return list(self.db.scalars(stmt).all())
-
-    def delete_all(self, commit: bool = True) -> int:
-        deleted = self.db.execute(delete(Alert)).rowcount
-        if commit:
-            self.db.commit()
-        return deleted

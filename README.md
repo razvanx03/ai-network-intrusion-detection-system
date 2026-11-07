@@ -1,6 +1,6 @@
 # AI Network Intrusion Detection System (NIDS)
 
-AI NIDS collects Zeek connection metadata (`conn.log`) from a remote sensor and analyzes it when an administrator requests it. The selected Random Forest classifier, trained on a published Zeek-derived CIC-IDS2017 dataset, flags suspicious connections for review. A React dashboard displays connections, findings and traceable analysis sessions. See [AI experiments, results and reproduction](ai/README.md).
+AI NIDS collects Zeek connection metadata (`conn.log`) and associated DNS, HTTP and TLS context from a remote sensor when an administrator requests it. The selected Random Forest classifier analyzes connection features, trained on a published Zeek-derived CIC-IDS2017 dataset, and flags suspicious connections for review. A React dashboard displays traffic records, protocol details, findings and traceable analysis sessions. See [AI experiments, results and reproduction](ai/README.md).
 
 ---
 
@@ -9,7 +9,7 @@ AI NIDS collects Zeek connection metadata (`conn.log`) from a remote sensor and 
 - **Replaceable AI boundary**: Typed input/finding contracts, shared versioned Zeek features and a locally selected classifier. Offline training compares Logistic Regression, Random Forest and Isolation Forest on TON_IoT Network and a Zeek-derived CIC-IDS2017 release.
 - **Traceable sessions**: Durable status, per-batch counts, normalized source references and finding evidence. Existing demonstration alerts are preserved and explicitly labelled as demo history.
 - **Connection classification**: Uses duration, directional byte/packet counts, protocol, detected service and connection state. Shared preprocessing preserves missing values and applies the same feature transformations during training and inference.
-- **Operations dashboard**: Refreshes stored metrics and analysis status, provides a manual fetch-and-analyze command, severity filters, paginated connection records, alert exports and database/cursor management. An explicit sample mode reads bundled demonstration records.
+- **Operations dashboard**: Refreshes stored metrics and analysis status, provides a manual fetch-and-analyze command, severity filters, paginated connection records, alert exports and reversible archival. An explicit sample mode reads bundled demonstration records.
 - **AI review workflow**: Shows unique stored, analyzed and flagged connections, pending analysis, session counts and protocol distribution. Open a finding to inspect its model score and source connection; mark it as new, under investigation, resolved or false positive. Demo history is available separately and excluded from AI dashboard statistics.
 - **Secure Authentication**: Single-admin authentication backed by `bcrypt` password hashing and `HttpOnly` JWT cookies with strict CORS protection.
 - **Fail-Fast Configuration**: Strict environment validation on both backend and frontend — missing or invalid configuration causes an immediate, descriptive startup error.
@@ -132,17 +132,35 @@ npm run dev
 
 The web application checks the HttpOnly session cookie on startup and restores
 a valid administrator session automatically. Dashboard and connection data load
-when entering their pages. There is no periodic polling. Filters, pagination, details and
+when entering their pages. While signed in, Ubuntu agent availability is checked
+on entry, manually from the header and one minute after each completed cycle.
+When available, the check is followed by log retrieval and AI analysis. Failed
+availability checks and sample mode do not trigger automatic analysis. Manual and
+automatic sensor runs share a coordinator; overlapping requests are coalesced and
+the backend guards concurrent analyses. Completed or partially failed runs refresh
+mounted data without blanking the current content. Other data is not independently
+polled. Agent availability does not confirm Zeek capture health. Filters, pagination, details and
 completed commands load their related data following the user's action. Opening
 or leaving a page idle does not fetch or analyze sensor logs. Zeek capture and
 systemd service startup on Ubuntu are independent of these web controls.
 
 1. Sign in at `http://localhost:5173/login` using the administrator credentials configured in `.env`. The login form does not prefill credentials.
 2. On the **Live Dashboard** (`/dashboard`):
-   - Click **Fetch & Analyze Logs** to pull the latest Zeek connection flows from the sensor, create a session, import and normalize new records, run the selected classifier, and display source connections and review findings. No analysis starts automatically.
+   - **Fetch & Analyze Logs** manually runs the same pipeline as the automatic follow-up: read new Zeek records, import and normalize them, run the classifier and retain evidence. The last-successful-sync card reflects completed sensor runs for the active dataset, not a health probe or stored-selection reanalysis.
    - Filter security alerts by severity (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) and mark investigated alerts as resolved.
-   - Use **Reset sensor cursor** to restart reading existing sensor logs (the log file is not deleted) or **Reset DB** to clear stored connections, alerts and analysis history. Sensor cursors are retained until separately reset.
-3. Navigate to **Zeek Flows** (`/connections`) to inspect stored connection metadata, connection states (`SF`, `S0`, `REJ`), durations and directional byte/packet counts, filtered by protocol (`TCP`, `UDP`, `ICMP`).
+   - Use **Archive data** to move all active traffic records, alerts and analysis sessions into one preserved archive batch. The dashboard, current flows, statistics and exports exclude archived data. Sensor cursors remain unchanged and cannot be reset through the application.
+3. Navigate to **Zeek Flows** (`/connections`) to inspect stored traffic records, connection states (`SF`, `S0`, `REJ`), durations and directional byte/packet counts, filtered by protocol (`TCP`, `UDP`, `ICMP`). The available-data badges beneath each UID expand its DNS, HTTP and TLS context. Multiple transactions are retained and paginated; absent imported context is explicitly labelled.
+4. **All data** (`/all-data`) displays active and archived traffic, alerts and sessions. Restore a complete archive batch to return its records to current pages without reimporting logs or rerunning AI. Protocol context, source links, UIDs and alert review statuses are preserved. New sensor data continues from the existing cursors; already archived UIDs remain deduplicated.
+
+Manual sensor ingestion also reads JSON `dns.log`, `http.log` and `ssl.log`,
+including gzip archives. Context is joined by Zeek UID and can arrive before or
+after its `conn.log` record. Separate stream cursors and content hashes prevent
+replay duplicates. Previously imported traffic can gain context on the next pull
+without resetting connection cursors or rerunning the classifier. Retained archives
+must still exist for backfill. Only explicitly selected protocol metadata is stored;
+HTTP credentials, authorization headers and bodies are excluded. URI/query metadata
+can still be sensitive. TLS metadata does not decrypt HTTPS content. The selected
+AI classifier continues to consume only its existing connection features.
    Select individual records or the current page, then choose **Analyze selection**
    to run the current model on existing connections. Reanalysis creates a new
    session and findings; unique connection totals do not grow simply because a
@@ -175,7 +193,7 @@ systemd service startup on Ubuntu are independent of these web controls.
   Skipped files are retried on the next manual fetch. Backend startup applies an
   additive migration for persisted session `file_issues`; update the sensor too.
 - Sensor mode describes configuration, not a live VM connectivity probe.
-- Collection currently supports JSON `conn.log` records and retained connection-log archives. DNS, HTTP, TLS and host security-event log ingestion, behavioral time windows and automatic traffic blocking are not implemented. Connection-state badges are protocol metadata, not attack verdicts.
+- Collection supports JSON `conn.log` and UID-linked `dns.log`, `http.log`, `ssl.log` context, including retained archives. Host security-event ingestion, behavioral time windows and automatic traffic blocking are not implemented. Connection-state badges are protocol metadata, not attack verdicts.
 - Source files under `app/src/lib/` must be included when committing the frontend. Python environment directories remain ignored.
 
 ## Verification
@@ -285,14 +303,24 @@ The manual sensor path is routes -> AnalysisService -> IngestionService -> norma
 and typed preparation -> shared feature extraction -> selected classifier -> findings
 and repositories. Stored-record analysis reuses selected database records. The sensor
 transport, authentication, archive discovery, UID deduplication and per-batch cursor
-commits retain their existing behavior. No background ingestion or inference runs.
+commits retain their existing behavior. The signed-in UI can invoke the same pipeline
+automatically after its successful periodic availability probe; no separate server scheduler runs.
 
 - `POST /api/system/fetch-and-analyze` remains the dashboard command. Its existing
   summary fields are retained and `analysis_session` is added.
+- `POST /api/archives` archives all active data atomically, `GET /api/archives`
+  lists batches and `POST /api/archives/{id}/restore` restores a lot. Both writes
+  reject running analyses. Normal data queries default to active records;
+  the authenticated All data page explicitly requests `include_archived=true`.
+  The former `/system/clear-database` and `/system/reset-sensor` endpoints no longer exist.
 - `GET /api/system/overview` returns persisted connection/session aggregates and
   requires the administrator cookie. Sensor access is exercised by an explicit
-  fetch-and-analyze operation; there is no separate availability-probe endpoint
-  in the main API. The collector's authenticated `/health` remains available for
+  fetch-and-analyze operation. `GET /api/system/sensor-status` probes only the
+  collector's authenticated `/health`, with a bounded timeout and explicit
+  unavailable, sensor-authentication and invalid-response states. When HTTP cannot
+  connect, a bounded ICMP check distinguishes agent unavailability (Ubuntu responds),
+  host/network unreachability, and unknown reachability. A firewall may block ICMP;
+  missing replies do not prove the VM is powered off. `/health` also remains available for
   installer/service verification.
 - Alert list, statistics and exports accept `provenance=analysis` or
   `provenance=legacy_demo`. The dashboard requests analysis-only statistics and
@@ -310,7 +338,7 @@ commits retain their existing behavior. No background ingestion or inference run
 
 Sessions are request-driven and use **one API worker**. A database constraint rejects
 concurrent analysis; reset operations refuse while a session is running. Restarting
-the API marks unfinished sessions interrupted. Resume is manual: committed batches
+the API marks unfinished sessions interrupted. The next automatic or manual run resumes: committed batches
 remain saved and unread batches are fetched again. There is no durable job queue or
 automatic retry. Add such infrastructure only if long-running inference later needs it.
 

@@ -5,11 +5,14 @@ from app.integrations.sensor_client import sensor_client, SensorFileError, Senso
 from app.repositories.connection_repository import ConnectionRepository
 from app.repositories.sensor_cursor_repository import SensorCursorRepository
 from app.schemas.connection import ZeekLogItem
+from app.schemas.protocol_event import LogType, normalize_event
+from app.repositories.protocol_event_repository import ProtocolEventRepository
 
 
 @dataclass(frozen=True)
 class IngestionBatch:
     records: list[dict]
+    log_type: LogType = "conn"
     sensor_url: str | None = None
     file_id: str | None = None
     file: str | None = None
@@ -50,14 +53,17 @@ class IngestionService:
                     break
                 try:
                     for record in batch.records:
-                        ZeekLogItem.model_validate(record)
-                except ValidationError:
+                        if file.log_type == "conn":
+                            ZeekLogItem.model_validate(record)
+                        else:
+                            normalize_event(file.log_type, record)
+                except (ValidationError, ValueError):
                     yield IngestionBatch(records=[], issue=SensorFileIssue(
                         file=file.file, code="corrupt_file", offset=offset,
                     ))
                     break
                 yield IngestionBatch(
-                    records=batch.records, sensor_url=sensor_client.base_url,
+                    records=batch.records, log_type=file.log_type, sensor_url=sensor_client.base_url,
                     file_id=file.file_id, file=file.file, offset=offset,
                     next_offset=batch.next_offset, completed=file.archived and not batch.has_more,
                 )
@@ -66,8 +72,12 @@ class IngestionService:
                     break
 
     def persist(self, batch: IngestionBatch):
-        validated = [ZeekLogItem.model_validate(record).model_dump() for record in batch.records]
+        validated = [ZeekLogItem.model_validate(record).model_dump() if batch.log_type == "conn"
+                     else normalize_event(batch.log_type, record) for record in batch.records]
         if batch.file_id is not None:
             self.cursors.advance(batch.sensor_url, batch.file_id, batch.file,
                                  batch.offset, batch.next_offset, batch.completed)
+        if batch.log_type != "conn":
+            ProtocolEventRepository(self.db).create_batch(validated)
+            return []
         return self.connections.create_batch(validated)

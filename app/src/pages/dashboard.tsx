@@ -10,18 +10,30 @@ import {
 } from "@/components/data-state";
 import { LoadingOrb } from "@/components/ui/loading-orb";
 import { useDashboard } from "@/hooks/use-dashboard";
+import { useUrlPagination } from "@/hooks/use-url-pagination";
 import { useI18n } from "@/i18n";
 import { api } from "@/services/api";
 import type { Severity, Provenance, AlertStatus, Alert } from "@/services/types";
 import { FindingDetails } from "@/components/dashboard/finding-details";
 import { AnalysisSessions } from "@/components/dashboard/analysis-sessions";
-import { DEFAULT_PAGE_SIZE } from "@/constants";
+
+import { useSensorSync } from "@/hooks/use-sensor-sync";
 const Charts = lazy(() => import("@/components/dashboard/charts"));
 export default function DashboardPage() {
+  const sync = useSensorSync();
   const { t } = useI18n();
   const [severity, setSeverity] = useState<Severity | "">("");
-  const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const {
+    limit: pageSize,
+    offset,
+    setOffset,
+    setLimit: setPageSize,
+    resetPage,
+  } = useUrlPagination({
+    pageParam: "page",
+    limitParam: "limit",
+  });
+
   const [provenance, setProvenance] = useState<Provenance>("analysis");
   const [historyVersion, setHistoryVersion] = useState(0);
   const [selectedFinding, setSelectedFinding] = useState<Alert | null>(null);
@@ -36,7 +48,7 @@ export default function DashboardPage() {
     setNotice(null);
     try {
       if (command === "analyze") {
-        const result = await api.fetchAndAnalyze();
+        const result = await sync.analyze();
         setNotice({
           key: result.analysis_session.file_issues.length ? "analysis_done_with_skips"
             : result.analysis_session.detector_status === "not_configured" ? "analysis_prepared" : "analysis_done",
@@ -47,18 +59,9 @@ export default function DashboardPage() {
             files: result.analysis_session.file_issues.length,
           },
         });
-      } else if (command === "sensor") {
-        await api.resetSensor();
-        setNotice({ key: "sensor_reset_done" });
-      } else if (command === "clear") {
-        const result = await api.clearDatabase();
-        setNotice({
-          key: "clear_db_done",
-          params: {
-            conns: result.deleted_connections,
-            alerts: result.deleted_alerts,
-          },
-        });
+      } else if (command === "archive") {
+        await api.archiveDatabase();
+        setNotice({ key: "archive_done" });
         setOffset(0);
         setSelectedFinding(null);
       } else if (command === "resolve" && id !== undefined) {
@@ -71,8 +74,8 @@ export default function DashboardPage() {
     } catch (error) {
       setNotice({ key: errorKey(error), error: true });
     } finally {
-      if (command !== "csv" && command !== "json") {
-        if (command === "analyze" || command === "clear") setHistoryVersion(value => value + 1);
+      if (command !== "csv" && command !== "json" && command !== "analyze") {
+        if (command === "archive") setHistoryVersion(value => value + 1);
         await resource.refresh();
       }
       locked.current = false;
@@ -83,7 +86,7 @@ export default function DashboardPage() {
     <div className="space-y-6 [overflow-anchor:none]">
       <Commands
         busy={busy}
-        running={!!resource.data?.overview.running_session_id}
+        running={sync.syncing || !!resource.data?.overview.running_session_id}
         run={(command) => {
           void run(command);
         }}
@@ -112,18 +115,18 @@ export default function DashboardPage() {
             <Charts stats={resource.data.stats} protocols={resource.data.overview.protocols} />
           </Suspense>
           <Alerts
-            loading={resource.loading}
+            loading={resource.alertsLoading}
             page={resource.data.alerts}
             severity={severity}
             onFilter={(value) => {
               setSeverity(value);
-              setOffset(0);
+              resetPage();
             }}
             onPage={setOffset}
-            onPageSize={(value) => { setPageSize(value); setOffset(0); }}
+            onPageSize={setPageSize}
             busy={!!busy || resource.loading}
             provenance={provenance}
-            onProvenance={(value) => { setProvenance(value); setOffset(0); setSelectedFinding(null); }}
+            onProvenance={(value) => { setProvenance(value); resetPage(); setSelectedFinding(null); }}
             falsePositives={resource.data.stats.false_positive_count}
             inspect={setSelectedFinding}
             updateStatus={(id, status) => {

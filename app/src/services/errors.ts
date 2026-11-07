@@ -2,6 +2,8 @@ import type { TranslationKey } from "@/i18n";
 import { ApiError } from "./api";
 export function errorKey(error: unknown): TranslationKey {
   if (error instanceof ApiError) {
+    if (error.code === "archive_empty") return "archive_empty";
+    if (error.code === "archive_not_found") return "archive_not_found";
     if (error.code === "sensor_unavailable") return "analysis_error_sensor";
     if (error.code === "invalid_records") return "analysis_error_records";
     if (error.code === "detector_failed") return "analysis_error_detector";

@@ -11,15 +11,15 @@ import { api } from "@/services/api";
 import { attackKeys, descriptionKeys } from "@/lib/display";
 import type { Alert, Connection, Page } from "@/services/types";
 
-export function FindingDetails({ alert, close }: { alert: Alert; close: () => void }) {
+export function FindingDetails({ alert, close, includeArchived = false }: { alert: Alert; close: () => void; includeArchived?: boolean }) {
   const { t, language } = useI18n();
   const [offset, setOffset] = useState(0);
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => { panel.current?.scrollIntoView({ block: "start", behavior: "smooth" }); }, []);
   const load = useCallback(async (signal: AbortSignal): Promise<Page<Connection>> => {
     if (!alert.analysis_session_id) return { items: [], total: 0, limit: 10, offset: 0 };
-    return api.getAlertConnections(alert.analysis_session_id, alert.id, offset, signal);
-  }, [alert.id, alert.analysis_session_id, offset]);
+    return api.getAlertConnections(alert.analysis_session_id, alert.id, offset, signal, includeArchived);
+  }, [alert.id, alert.analysis_session_id, offset, includeArchived]);
   const resource = useResource(load);
   return <Card ref={panel} className="scroll-mt-32">
     <CardHeader className="flex flex-row items-center justify-between gap-3"><CardTitle>{t("finding_inspect", { id: alert.id })}</CardTitle><Button variant="ghost" size="sm" onClick={close}>{t("close")}</Button></CardHeader>

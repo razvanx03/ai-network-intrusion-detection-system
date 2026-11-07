@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple
-from sqlalchemy import select, func, desc, delete
+from sqlalchemy import select, func, desc
 from sqlalchemy.orm import Session
 from app.models.connection import Connection
 from app.repositories.base_repository import BaseRepository
@@ -14,7 +14,7 @@ class ConnectionRepository(BaseRepository[Connection]):
         return self.db.scalars(stmt).first()
 
     def get_by_ids(self, ids: list[int]) -> list[Connection]:
-        return list(self.db.scalars(select(Connection).where(Connection.id.in_(ids)).order_by(Connection.id)).all())
+        return list(self.db.scalars(select(Connection).where(Connection.id.in_(ids), Connection.archive_batch_id.is_(None)).order_by(Connection.id)).all())
 
     def create_batch(self, connection_dicts: List[dict]) -> List[Connection]:
         """Save a batch of connections, skipping duplicate UIDs."""
@@ -49,9 +49,14 @@ class ConnectionRepository(BaseRepository[Connection]):
         conn_state: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
+        include_archived: bool = False,
     ) -> Tuple[List[Connection], int]:
         stmt = select(Connection)
         count_stmt = select(func.count(Connection.id))
+
+        if not include_archived:
+            stmt = stmt.where(Connection.archive_batch_id.is_(None))
+            count_stmt = count_stmt.where(Connection.archive_batch_id.is_(None))
 
         if src_ip:
             stmt = stmt.where(Connection.src_ip == src_ip)
@@ -72,10 +77,4 @@ class ConnectionRepository(BaseRepository[Connection]):
         return results, total
 
     def count_total(self) -> int:
-        return self.db.scalar(select(func.count(Connection.id))) or 0
-
-    def delete_all(self, commit: bool = True) -> int:
-        deleted = self.db.execute(delete(Connection)).rowcount
-        if commit:
-            self.db.commit()
-        return deleted
+        return self.db.scalar(select(func.count(Connection.id)).where(Connection.archive_batch_id.is_(None))) or 0
