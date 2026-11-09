@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple, Dict, Any
-from sqlalchemy import select, func, desc
+from datetime import datetime
+from sqlalchemy import select, func, desc, case, update
 from sqlalchemy.orm import Session
 from app.models.alert import Alert
 from app.models.analysis_session import AlertConnection
@@ -25,7 +26,6 @@ class AlertRepository(BaseRepository[Alert]):
 
     def get_filtered(
         self,
-        severity: Optional[str] = None,
         attack_type: Optional[str] = None,
         status: Optional[str] = None,
         src_ip: Optional[str] = None,
@@ -33,11 +33,15 @@ class AlertRepository(BaseRepository[Alert]):
         offset: int = 0,
         provenance: str | None = None,
         include_archived: bool = False,
+        archived_only: bool = False,
     ) -> Tuple[List[Alert], int]:
         stmt = select(Alert)
         count_stmt = select(func.count(Alert.id))
 
-        if not include_archived:
+        if archived_only:
+            stmt = stmt.where(Alert.archive_batch_id.is_not(None))
+            count_stmt = count_stmt.where(Alert.archive_batch_id.is_not(None))
+        elif not include_archived:
             stmt = stmt.where(Alert.archive_batch_id.is_(None))
             count_stmt = count_stmt.where(Alert.archive_batch_id.is_(None))
 
@@ -45,9 +49,6 @@ class AlertRepository(BaseRepository[Alert]):
             stmt = stmt.where(Alert.provenance == provenance)
             count_stmt = count_stmt.where(Alert.provenance == provenance)
 
-        if severity:
-            stmt = stmt.where(Alert.severity == severity.upper())
-            count_stmt = count_stmt.where(Alert.severity == severity.upper())
         if attack_type:
             stmt = stmt.where(Alert.attack_type == attack_type)
             count_stmt = count_stmt.where(Alert.attack_type == attack_type)
@@ -71,11 +72,13 @@ class AlertRepository(BaseRepository[Alert]):
             self.db.refresh(alert)
         return alert if alert and alert.archive_batch_id is None else None
 
+    def update_many_statuses(self, ids: list[int], status: str) -> list[int]:
+        return list(self.db.scalars(update(Alert).where(
+            Alert.id.in_(ids), Alert.archive_batch_id.is_(None), Alert.provenance == "analysis",
+        ).values(status=status).returning(Alert.id)).all())
+
     def count_total(self) -> int:
         return self.db.scalar(select(func.count(Alert.id)).where(Alert.archive_batch_id.is_(None))) or 0
-
-    def count_legacy(self) -> int:
-        return self.db.scalar(select(func.count(Alert.id)).where(Alert.provenance == "legacy_demo", Alert.archive_batch_id.is_(None))) or 0
 
     def get_stats(self, provenance: str | None = None) -> Dict[str, Any]:
         condition = Alert.archive_batch_id.is_(None)
@@ -83,12 +86,6 @@ class AlertRepository(BaseRepository[Alert]):
             condition = condition & (Alert.provenance == provenance)
         total = self.db.scalar(select(func.count(Alert.id)).where(condition)) or 0
         
-        # Severity breakdown
-        severities = self.db.execute(
-            select(Alert.severity, func.count(Alert.id)).where(condition).group_by(Alert.severity)
-        ).all()
-        sev_map = {s[0]: s[1] for s in severities}
-
         # Unresolved count (NEW or ACKNOWLEDGED)
         unresolved = self.db.scalar(
             select(func.count(Alert.id)).where(condition, Alert.status.in_(["NEW", "ACKNOWLEDGED"]))
@@ -104,32 +101,25 @@ class AlertRepository(BaseRepository[Alert]):
         ).all()
         top_attack_types = [{"attack_type": r[0], "count": r[1]} for r in top_types_q]
 
-        # Top attacking IPs
-        top_ips_q = self.db.execute(
-            select(Alert.src_ip, func.count(Alert.id).label("count"))
-            .where(condition)
-            .group_by(Alert.src_ip)
-            .order_by(desc("count"))
-            .limit(5)
-        ).all()
-        top_attacking_ips = [{"src_ip": r[0], "count": r[1]} for r in top_ips_q]
-
         return {
-            "false_positive_count": self.db.scalar(select(func.count(Alert.id)).where(condition, Alert.status == "FALSE_POSITIVE")) or 0,
             "total_alerts": total,
-            "critical_count": sev_map.get("CRITICAL", 0),
-            "high_count": sev_map.get("HIGH", 0),
-            "medium_count": sev_map.get("MEDIUM", 0),
-            "low_count": sev_map.get("LOW", 0),
             "unresolved_count": unresolved,
             "top_attack_types": top_attack_types,
-            "top_attacking_ips": top_attacking_ips,
         }
 
-    def get_all_for_export(self, severity: Optional[str] = None, provenance: str | None = None) -> List[Alert]:
+    def count_daily(self, boundaries: list[datetime]) -> list[int]:
+        # Half-open UTC intervals preserve local midnight and daylight-saving days.
+        columns = [func.coalesce(func.sum(case(
+            ((Alert.timestamp >= start) & (Alert.timestamp < end), 1), else_=0,
+        )), 0) for start, end in zip(boundaries, boundaries[1:])]
+        row = self.db.execute(select(*columns).where(
+            Alert.archive_batch_id.is_(None), Alert.provenance == "analysis",
+            Alert.timestamp >= boundaries[0], Alert.timestamp < boundaries[-1],
+        )).one()
+        return [int(count) for count in row]
+
+    def get_all_for_export(self, provenance: str | None = None) -> List[Alert]:
         stmt = select(Alert).where(Alert.archive_batch_id.is_(None)).order_by(desc(Alert.timestamp))
         if provenance:
             stmt = stmt.where(Alert.provenance == provenance)
-        if severity:
-            stmt = stmt.where(Alert.severity == severity.upper())
         return list(self.db.scalars(stmt).all())

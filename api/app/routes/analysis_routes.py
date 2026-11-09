@@ -1,14 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database.session import get_db
-from app.models.user import User
 from app.repositories.analysis_repository import AnalysisRepository
 from app.routes.deps import get_current_user
-from app.schemas.analysis import AnalysisRequest, AnalysisSessionResponse
+from app.schemas.analysis import AnalysisSessionResponse
 from app.schemas.alert import AlertResponse
 from app.schemas.connection import ConnectionResponse
-from app.schemas.system import FetchAnalyzeResponse
-from app.services.analysis_service import AnalysisBusyError, AnalysisRunError, AnalysisService
+from app.services.analysis_service import AnalysisRunError
 
 router = APIRouter(prefix="/analysis-sessions", tags=["Analysis sessions"], dependencies=[Depends(get_current_user)])
 
@@ -25,19 +23,10 @@ def require_session(repo: AnalysisRepository, session_id: str, include_archived:
     return session
 
 
-@router.post("", response_model=FetchAnalyzeResponse, status_code=201)
-async def start_analysis(body: AnalysisRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    try:
-        return await AnalysisService(db).run(user.id, body)
-    except AnalysisBusyError as exc:
-        raise HTTPException(409, "An analysis is already running.") from exc
-    except AnalysisRunError as exc:
-        raise run_error(exc) from exc
-
-
 @router.get("")
-def list_sessions(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0), include_archived: bool = Query(False), db: Session = Depends(get_db)):
-    page = AnalysisRepository(db).page(limit, offset, include_archived)
+def list_sessions(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0), include_archived: bool = Query(False),
+                  archived_only: bool = Query(False), db: Session = Depends(get_db)):
+    page = AnalysisRepository(db).page(limit, offset, include_archived, archived_only)
     page["items"] = [AnalysisSessionResponse.model_validate(item) for item in page["items"]]
     return page
 
@@ -70,13 +59,10 @@ def session_alerts(session_id: str, limit: int = Query(50, ge=1, le=500),
             "total": total, "limit": limit, "offset": offset}
 
 
-@router.get("/{session_id}/alerts/{alert_id}/connections")
-def alert_sources(session_id: str, alert_id: int, limit: int = Query(50, ge=1, le=500),
-                  offset: int = Query(0, ge=0), include_archived: bool = Query(False), db: Session = Depends(get_db)):
+@router.get("/{session_id}/alerts/{alert_id}/connections", response_model=list[ConnectionResponse])
+def alert_sources(session_id: str, alert_id: int, include_archived: bool = Query(False), db: Session = Depends(get_db)):
     require_session(AnalysisRepository(db), session_id, include_archived)
-    result = AnalysisRepository(db).alert_connections(session_id, alert_id, limit, offset)
+    result = AnalysisRepository(db).alert_connections(session_id, alert_id)
     if result is None:
         raise HTTPException(404, "Alert not found in this analysis session.")
-    connections, total = result
-    return {"items": [ConnectionResponse.model_validate(item) for item in connections],
-            "total": total, "limit": limit, "offset": offset}
+    return [ConnectionResponse.model_validate(item) for item in result]

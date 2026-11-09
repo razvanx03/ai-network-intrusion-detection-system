@@ -49,3 +49,7 @@ class Alert(Base):
     )
 
     connection = relationship("Connection", lazy="joined")
+
+    @property
+    def proto(self) -> str | None:
+        return self.connection.proto if self.connection is not None else None

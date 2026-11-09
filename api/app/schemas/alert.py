@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional, List, Literal
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, StrictInt, field_validator
 
 
 class AlertResponse(BaseModel):
@@ -8,6 +8,7 @@ class AlertResponse(BaseModel):
     id: int
     timestamp: datetime
     connection_id: Optional[int] = None
+    proto: str | None = None
     analysis_session_id: Optional[str] = None
     provenance: str
     src_ip: str
@@ -35,10 +36,22 @@ class AlertStatusUpdate(BaseModel):
     status: str  # NEW, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE
 
 
+class AlertBulkStatusUpdate(BaseModel):
+    ids: list[StrictInt] = Field(min_length=1, max_length=500)
+    status: Literal["NEW", "ACKNOWLEDGED", "RESOLVED", "FALSE_POSITIVE"]
+
+    @field_validator("ids")
+    @classmethod
+    def positive_unique_ids(cls, values):
+        if any(value <= 0 for value in values) or len(values) != len(set(values)):
+            raise ValueError("Alert IDs must be positive and unique")
+        return values
+
+
 class AlertFilter(BaseModel):
     include_archived: bool = False
-    provenance: Literal["analysis", "legacy_demo"] | None = None
-    severity: Optional[str] = None
+    archived_only: bool = False
+    provenance: Literal["analysis"] | None = None
     attack_type: Optional[str] = None
     status: Optional[str] = None
     src_ip: Optional[str] = None
@@ -47,12 +60,19 @@ class AlertFilter(BaseModel):
 
 
 class AlertStatsResponse(BaseModel):
-    false_positive_count: int
     total_alerts: int
-    critical_count: int
-    high_count: int
-    medium_count: int
-    low_count: int
     unresolved_count: int
     top_attack_types: List[dict]
-    top_attacking_ips: List[dict]
+
+
+class DailyAlertCount(BaseModel):
+    date: date
+    count: int
+
+
+class DailyAlertsResponse(BaseModel):
+    period_start: date
+    period: Literal["week", "month"]
+    today: date
+    timezone: str
+    days: list[DailyAlertCount]

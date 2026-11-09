@@ -67,5 +67,4 @@ def health_check(db: Session = Depends(get_db)):
         "sensor_mode": SENSOR_MODE_MOCK if settings.SENSOR_MOCK_MODE else SENSOR_MODE_REMOTE,
         "connections_total": conn_repo.count_total(),
         "alerts_total": alert_repo.count_total(),
-        "legacy_alerts_total": alert_repo.count_legacy(),
     }

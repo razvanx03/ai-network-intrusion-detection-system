@@ -79,6 +79,7 @@ class ConnectionResponse(BaseModel):
 
 class ConnectionFilter(BaseModel):
     include_archived: bool = False
+    archived_only: bool = False
     src_ip: Optional[str] = None
     dst_ip: Optional[str] = None
     proto: Optional[str] = None

@@ -13,7 +13,7 @@ import { api } from "@/services/api";
 import type { Alert } from "@/services/types";
 import { attackKeys } from "@/lib/display";
 
-export function AllAlerts({ refreshVersion }: { refreshVersion: number }) {
+export function AllAlerts({ refreshVersion, archivedOnly = false }: { refreshVersion: number; archivedOnly?: boolean }) {
   const { t } = useI18n();
   const {
     limit,
@@ -25,8 +25,8 @@ export function AllAlerts({ refreshVersion }: { refreshVersion: number }) {
     limitParam: "alert_limit",
   });
   const [selected, setSelected] = useState<Alert | null>(null);
-  const load = useCallback((signal: AbortSignal) => api.getAlerts({ include_archived: true, limit, offset }, signal), [limit, offset]);
-  const cacheKey = `alerts:archived:${limit}:${offset}`;
+  const load = useCallback((signal: AbortSignal) => api.getAlerts({ include_archived: true, archived_only: archivedOnly, limit, offset }, signal), [limit, offset, archivedOnly]);
+  const cacheKey = `alerts:archived:${archivedOnly}:${limit}:${offset}`;
   const resource = useResource(load, true, refreshVersion, cacheKey);
   return <div className="space-y-4"><Card>
     <CardHeader><CardTitle>{t("archive_alerts")}</CardTitle></CardHeader>

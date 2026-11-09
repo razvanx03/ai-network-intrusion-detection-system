@@ -58,7 +58,10 @@ function ProtocolSection({ connection, kind, includeArchived }: { connection: Co
 export function ConnectionContext({ connection, includeArchived = false }: { connection: Connection; includeArchived?: boolean }) {
   const { t } = useI18n();
   return <div className="min-w-0 space-y-4 py-2">
-    <div><h3 className="text-base font-semibold">{t("context_title")}</h3><p className="mt-1 break-all font-mono text-xs text-muted-foreground">{connection.uid}</p></div>
+    <dl>
+      <dt className="text-xs text-muted-foreground">{t("context_uid")}</dt>
+      <dd className="mt-1 break-all font-mono text-sm">{connection.uid}</dd>
+    </dl>
     <dl className="grid gap-3 text-sm sm:grid-cols-3">
       <div><dt className="text-xs text-muted-foreground">{t("context_history")}</dt><dd className="mt-1 break-all font-mono">{connection.history ?? "—"}</dd></div>
       <div><dt className="text-xs text-muted-foreground">{t("th_service")}</dt><dd className="mt-1">{connection.service ?? "—"}</dd></div>

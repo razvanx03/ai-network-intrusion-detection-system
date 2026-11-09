@@ -9,8 +9,8 @@ AI NIDS collects Zeek connection metadata (`conn.log`) and associated DNS, HTTP 
 - **Replaceable AI boundary**: Typed input/finding contracts, shared versioned Zeek features and a locally selected classifier. Offline training compares Logistic Regression, Random Forest and Isolation Forest on TON_IoT Network and a Zeek-derived CIC-IDS2017 release.
 - **Traceable sessions**: Durable status, per-batch counts, normalized source references and finding evidence. Existing demonstration alerts are preserved and explicitly labelled as demo history.
 - **Connection classification**: Uses duration, directional byte/packet counts, protocol, detected service and connection state. Shared preprocessing preserves missing values and applies the same feature transformations during training and inference.
-- **Operations dashboard**: Refreshes stored metrics and analysis status, provides a manual fetch-and-analyze command, severity filters, paginated connection records, alert exports and reversible archival. An explicit sample mode reads bundled demonstration records.
-- **AI review workflow**: Shows unique stored, analyzed and flagged connections, pending analysis, session counts and protocol distribution. Open a finding to inspect its model score and source connection; mark it as new, under investigation, resolved or false positive. Demo history is available separately and excluded from AI dashboard statistics.
+- **Operations dashboard**: Refreshes stored metrics and analysis status, provides a manual fetch-and-analyze command, paginated connection records, alert exports and reversible archival. An explicit sample mode reads bundled demonstration records.
+- **AI review workflow**: Shows stored and flagged connections, the last successful sync, protocol distribution and daily alert totals. Switch between week and month views to see daily totals, including zero-alert days, based on the traffic timestamp in the browser's timezone. Archived alerts are excluded. Open a finding to inspect its model score and source connection; mark it as new, under investigation, resolved or false positive. Select multiple findings with the row checkboxes to apply one status atomically; the header checkbox selects the current page. Historical demo records remain preserved in the all-data view and are excluded from AI dashboard statistics.
 - **Secure Authentication**: Single-admin authentication backed by `bcrypt` password hashing and `HttpOnly` JWT cookies with strict CORS protection.
 - **Fail-Fast Configuration**: Strict environment validation on both backend and frontend — missing or invalid configuration causes an immediate, descriptive startup error.
 - **Bilingual & Themeable UI**: Instant switching between Romanian and English (`ro` / `en`) and Dark / Light themes (`dark` / `light`).
@@ -146,10 +146,10 @@ systemd service startup on Ubuntu are independent of these web controls.
 
 1. Sign in at `http://localhost:5173/login` using the administrator credentials configured in `.env`. The login form does not prefill credentials.
 2. On the **Live Dashboard** (`/dashboard`):
-   - **Fetch & Analyze Logs** manually runs the same pipeline as the automatic follow-up: read new Zeek records, import and normalize them, run the classifier and retain evidence. The last-successful-sync card reflects completed sensor runs for the active dataset, not a health probe or stored-selection reanalysis.
+   - **Fetch & Analyze Logs** manually runs the same pipeline as the automatic follow-up: read new Zeek records, import and normalize them, run the classifier and retain evidence. The last-successful-sync card reflects completed sensor runs for the active dataset, not a health probe.
    - Filter security alerts by severity (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) and mark investigated alerts as resolved.
    - Use **Archive data** to move all active traffic records, alerts and analysis sessions into one preserved archive batch. The dashboard, current flows, statistics and exports exclude archived data. Sensor cursors remain unchanged and cannot be reset through the application.
-3. Navigate to **Zeek Flows** (`/connections`) to inspect stored traffic records, connection states (`SF`, `S0`, `REJ`), durations and directional byte/packet counts, filtered by protocol (`TCP`, `UDP`, `ICMP`). The available-data badges beneath each UID expand its DNS, HTTP and TLS context. Multiple transactions are retained and paginated; absent imported context is explicitly labelled.
+3. Navigate to **Zeek Flows** (`/connections`) to inspect stored traffic records, connection states (`SF`, `S0`, `REJ`), durations and directional byte/packet counts, filtered by protocol (`TCP`, `UDP`, `ICMP`). The available-data badges beneath each UID summarize its context; use **Details** to open the UID and DNS, HTTP and TLS metadata in a modal. Multiple transactions are retained and paginated; absent imported context is explicitly labelled.
 4. **All data** (`/all-data`) displays active and archived traffic, alerts and sessions. Restore a complete archive batch to return its records to current pages without reimporting logs or rerunning AI. Protocol context, source links, UIDs and alert review statuses are preserved. New sensor data continues from the existing cursors; already archived UIDs remain deduplicated.
 
 Manual sensor ingestion also reads JSON `dns.log`, `http.log` and `ssl.log`,
@@ -161,14 +161,10 @@ must still exist for backfill. Only explicitly selected protocol metadata is sto
 HTTP credentials, authorization headers and bodies are excluded. URI/query metadata
 can still be sensitive. TLS metadata does not decrypt HTTPS content. The selected
 AI classifier continues to consume only its existing connection features.
-   Select individual records or the current page, then choose **Analyze selection**
-   to run the current model on existing connections. Reanalysis creates a new
-   session and findings; unique connection totals do not grow simply because a
-   connection was analyzed again.
 4. In the dashboard's **Findings and review** feed, open **Details** for source
    evidence and use **Status** to record your review. Manually marked false-positive
    counts are feedback, not a measured false-positive rate or automatic retraining.
-   CSV/JSON exports follow the selected severity and finding origin.
+   CSV/JSON exports include all active AI findings. Finding details open in a reusable modal with a source-evidence table and no pagination controls.
 
 ## AI training and inference
 
@@ -184,7 +180,7 @@ AI classifier continues to consume only its existing connection features.
 
 - All alert, connection and system endpoints require an active administrator session. Login returns user and session metadata; the JWT is transmitted only in an HttpOnly cookie.
 - Set secure-cookie options appropriately for deployment over HTTPS. Local HTTP development must use an explicit compatible configuration.
-- The dashboard supports paginated alerts and connections, visible request errors, and Romanian/English themes and labels. Alert exports include all records matching the selected severity, not just the visible page.
+- The dashboard supports paginated alerts and connections, visible request errors, and Romanian/English themes and labels. Alert exports include all active AI findings, not just the visible page.
 - `api/app/ai/engine.py` defines the detector contract. Startup loads the explicit `api/app/ai/deployment.json` configuration. The initial classifier is a CIC Zeek Random Forest baseline; its dataset scores do not establish local-network performance. Isolation Forest remains an offline experiment and is not enabled. The transport and frontend do not depend on a specific model.
 - The VM collector discovers current JSON conn.log streams and retained gzip archives. The backend commits each file cursor together with connections and alerts in SQLite, resumes across rotation, and analyzes only new connection UIDs. Retain unread archives until ingestion. Deploy the updated backend and sensor together. See [sensor setup and recovery](sensor_agent/README.md).
 - Corrupt or individually unreadable sensor files are skipped for the current run
@@ -301,7 +297,7 @@ before every start, including boot; routing and NAT are unaffected.
 
 The manual sensor path is routes -> AnalysisService -> IngestionService -> normalization
 and typed preparation -> shared feature extraction -> selected classifier -> findings
-and repositories. Stored-record analysis reuses selected database records. The sensor
+and repositories. There is no stored-record reanalysis command. The sensor
 transport, authentication, archive discovery, UID deduplication and per-batch cursor
 commits retain their existing behavior. The signed-in UI can invoke the same pipeline
 automatically after its successful periodic availability probe; no separate server scheduler runs.
@@ -322,12 +318,9 @@ automatically after its successful periodic availability probe; no separate serv
   host/network unreachability, and unknown reachability. A firewall may block ICMP;
   missing replies do not prove the VM is powered off. `/health` also remains available for
   installer/service verification.
-- Alert list, statistics and exports accept `provenance=analysis` or
-  `provenance=legacy_demo`. The dashboard requests analysis-only statistics and
-  lets users inspect demo history separately.
-- `POST /api/analysis-sessions` accepts `{"source":"sensor"}` or
-  `{"source":"stored","connection_ids":[1,2]}` (1..500 existing IDs).
-  Stored analysis explicitly reuses records without copying raw logs or moving cursors.
+- Alert list, statistics and exports accept `provenance=analysis`.
+  The dashboard always shows and exports AI findings. The all-data view provides a shared Hide current data switch for traffic, alerts and sessions (server-side archived-only filtering), and preserves
+  access to historical records without a separate demo-history selector.
 - `GET /api/analysis-sessions?limit=20&offset=0` lists history; `GET /{id}` retrieves
   status, counters, detector/preparation metadata and safe error codes.
 - `GET /api/analysis-sessions/{id}/connections` and `/alerts` return paginated

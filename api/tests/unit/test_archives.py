@@ -114,11 +114,6 @@ def test_archived_uids_remain_in_deduplication_query(db, raw_record):
     db.add_all.assert_not_called()
 
 
-def test_stored_analysis_cannot_select_archived_sources(db):
-    ConnectionRepository(db).get_by_ids([1])
-    assert "archive_batch_id IS NULL" in str(db.scalars.call_args.args[0])
-
-
 def test_exports_and_stats_only_include_active_alerts(db):
     repo = AlertRepository(db)
     repo.get_all_for_export()

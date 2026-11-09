@@ -13,9 +13,6 @@ class ConnectionRepository(BaseRepository[Connection]):
         stmt = select(Connection).where(Connection.uid == uid)
         return self.db.scalars(stmt).first()
 
-    def get_by_ids(self, ids: list[int]) -> list[Connection]:
-        return list(self.db.scalars(select(Connection).where(Connection.id.in_(ids), Connection.archive_batch_id.is_(None)).order_by(Connection.id)).all())
-
     def create_batch(self, connection_dicts: List[dict]) -> List[Connection]:
         """Save a batch of connections, skipping duplicate UIDs."""
         if not connection_dicts:
@@ -50,11 +47,15 @@ class ConnectionRepository(BaseRepository[Connection]):
         limit: int = 50,
         offset: int = 0,
         include_archived: bool = False,
+        archived_only: bool = False,
     ) -> Tuple[List[Connection], int]:
         stmt = select(Connection)
         count_stmt = select(func.count(Connection.id))
 
-        if not include_archived:
+        if archived_only:
+            stmt = stmt.where(Connection.archive_batch_id.is_not(None))
+            count_stmt = count_stmt.where(Connection.archive_batch_id.is_not(None))
+        elif not include_archived:
             stmt = stmt.where(Connection.archive_batch_id.is_(None))
             count_stmt = count_stmt.where(Connection.archive_batch_id.is_(None))
 

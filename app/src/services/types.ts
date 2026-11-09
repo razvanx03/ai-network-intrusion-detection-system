@@ -8,12 +8,12 @@ export interface User {
 export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 export type AlertStatus =
   "NEW" | "ACKNOWLEDGED" | "RESOLVED" | "FALSE_POSITIVE";
-export type Provenance = "analysis" | "legacy_demo";
 export interface Alert {
   archive_batch_id: string | null;
   id: number;
   timestamp: string;
   connection_id: number | null;
+  proto: string | null;
   analysis_session_id: string | null;
   provenance: "legacy_demo" | "analysis";
   src_ip: string;
@@ -63,15 +63,9 @@ export interface Page<T> {
   offset: number;
 }
 export interface AlertStats {
-  false_positive_count: number;
   total_alerts: number;
-  critical_count: number;
-  high_count: number;
-  medium_count: number;
-  low_count: number;
   unresolved_count: number;
   top_attack_types: { attack_type: string; count: number }[];
-  top_attacking_ips: { src_ip: string; count: number }[];
 }
 export interface Overview {
   connections_total: number;
@@ -79,14 +73,6 @@ export interface Overview {
   last_successful_sync: string | null;
   running_session_id: string | null;
   protocols: { proto: string; count: number }[];
-}
-export interface Health {
-  status: string;
-  database: string;
-  sensor_mode: string;
-  connections_total: number;
-  alerts_total: number;
-  legacy_alerts_total: number;
 }
 export interface SensorStatus {
   status: "available" | "unavailable" | "host_unreachable" | "host_unknown" | "unauthorized" | "invalid_response" | "sample_mode";
@@ -137,4 +123,12 @@ export interface ArchiveBatch {
   connections: number;
   alerts: number;
   sessions: number;
+}
+
+export interface DailyAlerts {
+  period_start: string;
+  period: "week" | "month";
+  today: string;
+  timezone: string;
+  days: { date: string; count: number }[];
 }

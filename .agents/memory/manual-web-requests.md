@@ -52,6 +52,40 @@ not pull the selector with an anchor farther down the page. Desktop live checks
 confirmed identical selector coordinates between populated and empty sessions.
 
 This decision concerns web requests, not Ubuntu capture or service supervision.
+Pagination page-jump forms use a nonmodal Popover, not a modal DropdownMenu.
+The modal menu locked the body scroll, shifting content and displacing the sticky
+header. On 2026-11-09 live checks confirmed unchanged header coordinates, content
+position and scroll position when opening the nonmodal page chooser. Session
+selection uses a bounded searchable dropdown displaying timestamps, keeping Zeek
+UIDs in the records table; the default session-record page size is 20.
+
+Finding details open in the shared Modal component rather than an inline card.
+Do not scroll the page to show details. On 2026-11-09 desktop checks confirmed
+unchanged page scroll after closing and focus restored to the Details button;
+the mobile dialog stayed within the viewport with internal table scrolling.
+Finding status menus also use nonmodal DropdownMenu to avoid scroll locking.
+The dashboard replaces severity with row checkboxes; selection is cleared when
+changing page/page size or archiving. Bulk status updates use one transaction,
+reject unavailable/archived findings without partial changes, and cap at 500 IDs.
+The Zeek traffic browser has no selection or stored-record reanalysis action.
+On 2026-11-09 the unused POST analysis-session route and stored-analysis branch
+were removed; sensor ingestion still uses the shared analysis service. Historical
+stored-session metadata remains readable. Traffic Details use the shared Modal,
+showing the Zeek UID and the existing DNS/HTTP/TLS context rather than expanding
+a table row. Live desktop/mobile checks covered TLS and DNS records.
+All-data has a shared Hide current data switch across traffic, findings and
+sessions. The archived_only API flag filters both rows and totals on the server,
+and overrides include_archived when true. Reset page offsets and selected session
+when changing that scope. Successful archive/restore operations clear resource
+caches so navigating between routes does not reuse pre-archive membership.
+
+After adding/removing frontend dependencies with Vite already running, verify the
+development page as well as the production build. On 2026-11-09 a blank root and
+a 404 for the prebundled Radix popover dependency were resolved by restarting only
+Vite with `npm run dev -- --force`, then reloading after optimization completed.
+Live verification confirmed the dashboard rendered again. Do not diagnose this
+specific dependency-cache failure as an authentication or backend problem.
+
 Zeek still captures traffic and systemd services still start at boot. Backend
 startup configuration/migrations and per-request authentication remain intact.
 

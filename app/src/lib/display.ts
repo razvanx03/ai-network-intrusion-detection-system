@@ -10,7 +10,3 @@ export const attackKeys: Record<string, TranslationKey> = {
   "DoS / SYN Flood": "attack_dos",
   "Statistical Anomaly": "attack_anomaly",
 };
-
-export const descriptionKeys: Record<string, TranslationKey> = {
-  connection_model_review: "finding_connection_review",
-};

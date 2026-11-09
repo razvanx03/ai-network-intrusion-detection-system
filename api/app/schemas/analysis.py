@@ -1,23 +1,12 @@
 from datetime import datetime, timezone
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.schemas.sensor import SensorFileIssue
 
 
 class AnalysisRequest(BaseModel):
-    source: Literal["sensor", "stored"] = "sensor"
-    connection_ids: list[int] = Field(default_factory=list, max_length=500)
-
-    @model_validator(mode="after")
-    def validate_selection(self):
-        if self.source == "stored" and not self.connection_ids:
-            raise ValueError("Stored analysis requires 1..500 explicit connection IDs.")
-        if self.source == "sensor" and self.connection_ids:
-            raise ValueError("Connection IDs are only valid for stored analysis.")
-        if any(value <= 0 for value in self.connection_ids):
-            raise ValueError("Connection IDs must be positive.")
-        self.connection_ids = list(dict.fromkeys(self.connection_ids))
-        return self
+    model_config = ConfigDict(extra="forbid")
+    source: Literal["sensor"] = "sensor"
 
 
 class AnalysisSessionResponse(BaseModel):

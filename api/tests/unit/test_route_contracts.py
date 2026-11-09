@@ -30,6 +30,10 @@ def contains_admin_dependency(dependant):
         contains_admin_dependency(child) for child in dependant.dependencies)
 
 
+def test_removed_stored_reanalysis_route_is_not_exposed():
+    assert not any("POST" in route.methods for route in analysis_routes.router.routes if isinstance(route, APIRoute))
+
+
 @pytest.mark.parametrize("router", [alert_routes.router, analysis_routes.router,
                                     connection_routes.router, system_routes.router, archive_routes.router],
                          ids=["alerts", "analysis", "connections", "system", "archives"])

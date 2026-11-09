@@ -23,13 +23,13 @@ def export_service(db, **overrides):
 
 def test_csv_escapes_multiline_fields_and_preserves_zero_values(db):
     service, alert = export_service(db)
-    rows = list(csv.DictReader(io.StringIO(service.export_alerts_csv("MEDIUM", "analysis"))))
+    rows = list(csv.DictReader(io.StringIO(service.export_alerts_csv("analysis"))))
     assert len(rows) == 1
     assert rows[0]["Description"] == alert.description
     assert rows[0]["Confidence"] == "0.00"
     assert rows[0]["Destination Port"] == "0"
     assert rows[0]["Analysis Session"] == "unit-session"
-    service.alert_repo.get_all_for_export.assert_called_once_with("MEDIUM", "analysis")
+    service.alert_repo.get_all_for_export.assert_called_once_with("analysis")
 
 
 def test_json_export_retains_provenance_and_nulls(db):

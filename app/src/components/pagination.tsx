@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,8 +47,8 @@ function EllipsisJump({
   };
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
+      <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
@@ -59,8 +60,8 @@ function EllipsisJump({
           <MoreHorizontal className="size-4" aria-hidden="true" />
           <span className="sr-only">{t("pagination_more")}</span>
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="center" className="w-52 p-3 shadow-lg">
+      </PopoverTrigger>
+      <PopoverContent align="center" className="w-52 p-3 shadow-lg" aria-label={t("pagination_jump_title")}>
         <div className="mb-2 text-xs font-semibold text-foreground">
           {t("pagination_jump_title")}
         </div>
@@ -74,6 +75,7 @@ function EllipsisJump({
             placeholder={`1-${pageCount}`}
             className="h-8 text-center text-xs tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             autoFocus
+            aria-label={t("pagination_jump_label")}
           />
           <Button
             type="submit"
@@ -87,8 +89,8 @@ function EllipsisJump({
         <p className="mt-1.5 text-[11px] text-muted-foreground">
           {t("pagination_of_total", { total: pageCount })}
         </p>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -232,7 +234,7 @@ export function Pagination({
       {onLimitChange && (
         <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground md:col-start-3 md:row-start-1 md:justify-end">
           <span>{t("pagination_rows")}</span>
-          <DropdownMenu>
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"

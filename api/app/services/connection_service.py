@@ -22,6 +22,7 @@ class ConnectionService:
             limit=filters.limit,
             offset=filters.offset,
             include_archived=filters.include_archived,
+            archived_only=filters.archived_only,
         )
 
     def count_total(self) -> int:

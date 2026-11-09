@@ -1,5 +1,6 @@
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { AlertStatusBadge } from "@/components/alert-status-badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   TableHeader,
@@ -10,77 +11,48 @@ import {
 } from "@/components/ui/table";
 import { PaginatedTable } from "@/components/paginated-table";
 import { useI18n } from "@/i18n";
-import { attackKeys, descriptionKeys } from "@/lib/display";
-import type { Alert, Page, Severity, Provenance, AlertStatus } from "@/services/types";
+import type { Alert, Page, AlertStatus } from "@/services/types";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu";
-const variants = {
-  CRITICAL: "critical",
-  HIGH: "high",
-  MEDIUM: "medium",
-  LOW: "low",
-} as const;
 export function Alerts({
   page,
-  severity,
-  onFilter,
   onPage,
   onPageSize,
   updateStatus,
   inspect,
-  provenance,
-  onProvenance,
-  falsePositives,
+  selectedIds,
+  onSelectionChange,
+  updateSelectedStatus,
   busy,
   loading,
 }: {
   page: Page<Alert>;
-  severity: Severity | "";
-  onFilter: (value: Severity | "") => void;
   onPage: (offset: number) => void;
   onPageSize: (limit: number) => void;
   updateStatus: (id: number, status: AlertStatus) => void;
   inspect: (alert: Alert) => void;
-  provenance: Provenance;
-  onProvenance: (value: Provenance) => void;
-  falsePositives: number;
+  selectedIds: number[];
+  onSelectionChange: (ids: number[]) => void;
+  updateSelectedStatus: (status: AlertStatus) => void;
   busy: boolean;
   loading: boolean;
 }) {
   const { t } = useI18n();
+  const allSelected = page.items.length > 0 && page.items.every(alert => selectedIds.includes(alert.id));
+  const toggle = (id: number, checked: boolean) => onSelectionChange(checked ? [...selectedIds, id] : selectedIds.filter(value => value !== id));
   return (
     <Card>
       <CardHeader className="gap-3">
         <CardTitle>{t("feed_title")}</CardTitle>
-        <div className="flex flex-wrap gap-2" role="group" aria-label={t("finding_origin")}>
-          {(["analysis", "legacy_demo"] as const).map(value => <Button key={value} size="sm" variant={provenance === value ? "secondary" : "ghost"} aria-pressed={provenance === value} disabled={busy} onClick={() => onProvenance(value)}>{t(value === "analysis" ? "findings_model" : "legacy_demo")}</Button>)}
-        </div>
-        {provenance === "analysis" && <p className="text-xs text-muted-foreground">{t("findings_false_positive_count", { count: falsePositives })}</p>}
-        <div
-          className="flex flex-wrap gap-1"
-          role="group"
-          aria-label={t("th_severity")}
-        >
-          <Button
-            size="sm"
-            variant={severity === "" ? "secondary" : "ghost"}
-            disabled={busy}
-            aria-pressed={severity === ""}
-            onClick={() => onFilter("")}
-          >
-            {t("filter_all_severities")}
-          </Button>
-          {(["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const).map((value) => (
-            <Button
-              key={value}
-              size="sm"
-              variant={severity === value ? "secondary" : "ghost"}
-              disabled={busy}
-              aria-pressed={severity === value}
-              onClick={() => onFilter(value)}
-            >
-              {t(`severity_${value}`)}
-            </Button>
-          ))}
+        <div className="flex min-h-9 flex-wrap items-center gap-2">
+          <span className="min-w-28 text-sm tabular-nums">{t("findings_selected", { count: selectedIds.length })}</span>
+          <DropdownMenu modal={false}><DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline" disabled={busy || !selectedIds.length}>{t("findings_bulk_status")}</Button>
+          </DropdownMenuTrigger><DropdownMenuContent align="start">
+            <DropdownMenuRadioGroup value="" onValueChange={value => updateSelectedStatus(value as AlertStatus)}>
+              {(["NEW", "ACKNOWLEDGED", "RESOLVED", "FALSE_POSITIVE"] as const).map(status => <DropdownMenuRadioItem key={status} value={status}>{t(`status_${status}`)}</DropdownMenuRadioItem>)}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent></DropdownMenu>
+          <Button size="sm" variant="ghost" disabled={busy || !selectedIds.length} onClick={() => onSelectionChange([])}>{t("clear_selection")}</Button>
         </div>
       </CardHeader>
       <CardContent>
@@ -89,10 +61,12 @@ export function Alerts({
           onChange={onPage} onLimitChange={onPageSize}>
             <TableHeader>
               <TableRow>
-                <TableHead>{t("th_severity")}</TableHead>
-                <TableHead>{t("th_attack_type")}</TableHead>
+                <TableHead className="w-12"><Checkbox aria-label={t("findings_select_page")} disabled={busy || !page.items.length}
+                  checked={allSelected ? true : selectedIds.length ? "indeterminate" : false}
+                  onCheckedChange={checked => onSelectionChange(checked ? page.items.map(alert => alert.id) : [])} /></TableHead>
                 <TableHead>{t("th_source")}</TableHead>
                 <TableHead>{t("th_destination")}</TableHead>
+                <TableHead>{t("th_protocol")}</TableHead>
                 <TableHead>{t("model_score")}</TableHead>
                 <TableHead>{t("th_status")}</TableHead>
                 <TableHead>{t("th_action")}</TableHead>
@@ -101,22 +75,8 @@ export function Alerts({
             <TableBody>
               {page.items.map((alert) => (
                 <TableRow key={alert.id}>
-                  <TableCell>
-                    <Badge variant={variants[alert.severity]}>
-                      {t(`severity_${alert.severity}`)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {attackKeys[alert.attack_type]
-                      ? t(attackKeys[alert.attack_type])
-                      : alert.attack_type}
-                    <p
-                      className="mt-1 max-w-sm truncate text-xs font-normal text-muted-foreground"
-                      title={descriptionKeys[alert.description] ? t(descriptionKeys[alert.description]) : alert.description}
-                    >
-                      {descriptionKeys[alert.description] ? t(descriptionKeys[alert.description]) : alert.description}
-                    </p>
-                  </TableCell>
+                  <TableCell><Checkbox aria-label={t("findings_select", { id: alert.id })} checked={selectedIds.includes(alert.id)} disabled={busy}
+                    onCheckedChange={checked => toggle(alert.id, checked === true)} /></TableCell>
                   <TableCell className="font-mono text-xs">
                     {alert.src_ip}
                   </TableCell>
@@ -124,20 +84,15 @@ export function Alerts({
                     {alert.dst_ip}
                     {alert.dst_port != null && `:${alert.dst_port}`}
                   </TableCell>
+                  <TableCell>{alert.proto?.toUpperCase() ?? "—"}</TableCell>
                   <TableCell className="tabular-nums" title={t("model_score_help")}>{alert.confidence.toFixed(3)}</TableCell>
                   <TableCell>
-                    <Badge
-                      variant={
-                        alert.status === "RESOLVED" ? "secondary" : "default"
-                      }
-                    >
-                      {t(`status_${alert.status}`)}
-                    </Badge>
+                    <AlertStatusBadge status={alert.status} />
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
                       <Button size="sm" variant="outline" onClick={() => inspect(alert)} aria-label={t("finding_inspect", { id: alert.id })}>{t("finding_details")}</Button>
-                      <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" disabled={busy} aria-label={t("finding_change_status", { id: alert.id })}>{t("th_status")}</Button></DropdownMenuTrigger>
+                      <DropdownMenu modal={false}><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" disabled={busy} aria-label={t("finding_change_status", { id: alert.id })}>{t("th_status")}</Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end"><DropdownMenuRadioGroup value={alert.status} onValueChange={value => updateStatus(alert.id, value as AlertStatus)}>
                           {(["NEW", "ACKNOWLEDGED", "RESOLVED", "FALSE_POSITIVE"] as const).map(status => <DropdownMenuRadioItem key={status} value={status}>{t(`status_${status}`)}</DropdownMenuRadioItem>)}
                         </DropdownMenuRadioGroup></DropdownMenuContent>

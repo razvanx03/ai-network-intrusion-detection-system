@@ -36,8 +36,7 @@ def test_invalid_log_records_fail_validation(field, value, raw_record):
         ZeekLogItem.model_validate({**raw_record, field: value})
 
 
-def test_stored_selection_deduplicates_preserving_order():
-    assert AnalysisRequest(source="stored", connection_ids=[3, 1, 3, 2]).connection_ids == [3, 1, 2]
+def test_analysis_is_sensor_only():
     assert AnalysisRequest().source == "sensor"
 
 
@@ -50,10 +49,6 @@ def test_stored_selection_deduplicates_preserving_order():
 def test_invalid_analysis_requests_are_rejected(values):
     with pytest.raises(ValidationError):
         AnalysisRequest.model_validate(values)
-
-
-def test_maximum_stored_selection_is_accepted():
-    assert len(AnalysisRequest(source="stored", connection_ids=list(range(1, 501))).connection_ids) == 500
 
 
 @pytest.mark.parametrize("overrides", [

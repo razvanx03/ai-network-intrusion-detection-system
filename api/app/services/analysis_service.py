@@ -8,17 +8,12 @@ from app.ai import engine
 from app.ai.preparation import PREPARATION_VERSION, prepare_connections
 from app.repositories.alert_repository import AlertRepository
 from app.repositories.analysis_repository import AnalysisRepository
-from app.repositories.connection_repository import ConnectionRepository
 from app.repositories.sensor_cursor_repository import CursorConflictError
 from app.schemas.analysis import AnalysisRequest, AnalysisSessionResponse
 from app.services.ingestion_service import IngestionService
 
 
 class AnalysisBusyError(RuntimeError):
-    pass
-
-
-class StoredSelectionError(ValueError):
     pass
 
 
@@ -36,7 +31,6 @@ class AnalysisService:
     def __init__(self, db):
         self.db = db
         self.sessions = AnalysisRepository(db)
-        self.connections = ConnectionRepository(db)
         self.alerts = AlertRepository(db)
         self.ingestion = IngestionService(db)
 
@@ -61,32 +55,24 @@ class AnalysisService:
         phase = "processing_failed"
         summary: dict[str, int] = {}
         try:
-            if request.source == "stored":
-                connections = self.connections.get_by_ids(request.connection_ids)
-                if len(connections) != len(request.connection_ids):
-                    raise StoredSelectionError("Selected connections no longer exist.")
-                phase = "detector_failed"
-                self._process(session_id, connections, len(connections), 0, detector, summary)
-                self.db.commit()
-            else:
-                phase = "sensor_unavailable"
-                async for batch in self.ingestion.batches():
-                    if batch.issue is not None:
-                        self.sessions.record_file_issue(session_id, batch.issue)
-                        self.db.commit()
-                        continue
-                    phase = "invalid_records"
-                    connections = self.ingestion.persist(batch)
-                    if batch.log_type != "conn":
-                        # Context enriches records; it is never input to the selected classifier.
-                        self.db.commit()
-                        phase = "sensor_unavailable"
-                        continue
-                    phase = "detector_failed"
-                    self._process(session_id, connections, len(batch.records), len(connections),
-                                  detector, summary, batch)
+            phase = "sensor_unavailable"
+            async for batch in self.ingestion.batches():
+                if batch.issue is not None:
+                    self.sessions.record_file_issue(session_id, batch.issue)
+                    self.db.commit()
+                    continue
+                phase = "invalid_records"
+                connections = self.ingestion.persist(batch)
+                if batch.log_type != "conn":
+                    # Context enriches records; it is never input to the selected classifier.
                     self.db.commit()
                     phase = "sensor_unavailable"
+                    continue
+                phase = "detector_failed"
+                self._process(session_id, connections, len(batch.records), len(connections),
+                              detector, summary, batch)
+                self.db.commit()
+                phase = "sensor_unavailable"
             self.sessions.finish(session_id, "completed")
             self.db.commit()
         except asyncio.CancelledError:
@@ -96,7 +82,7 @@ class AnalysisService:
             raise
         except Exception as exc:
             self.db.rollback()
-            code = ("invalid_records" if isinstance(exc, (InvalidRecordsError, StoredSelectionError))
+            code = ("invalid_records" if isinstance(exc, InvalidRecordsError)
                     else "cursor_conflict" if isinstance(exc, CursorConflictError)
                     else "sensor_unavailable" if isinstance(exc, httpx.HTTPError)
                     else "processing_failed" if isinstance(exc, SQLAlchemyError)

@@ -1,6 +1,10 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Archive, ArchiveRestore } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { InfoTooltip } from "@/components/info-tooltip";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/ui/table";
@@ -13,7 +17,7 @@ import { FindingDetails } from "@/components/dashboard/finding-details";
 import { AllAlerts } from "@/components/all-alerts";
 import { DataState, OperationNotice, type Notice } from "@/components/data-state";
 import { useSensorSync } from "@/hooks/use-sensor-sync";
-import { useResource } from "@/hooks/use-resource";
+import { clearResourceCache, useResource } from "@/hooks/use-resource";
 import { useUrlPagination } from "@/hooks/use-url-pagination";
 import { useI18n } from "@/i18n";
 import { api } from "@/services/api";
@@ -24,6 +28,18 @@ export default function AllDataPage() {
   const { t, language } = useI18n();
   const sync = useSensorSync();
   const [view, setView] = useState<"traffic" | "alerts" | "sessions">("traffic");
+  const [archivedOnly, setArchivedOnly] = useState(false);
+  const switchId = useId();
+  const [, setSearchParams] = useSearchParams();
+  const changeArchiveFilter = (checked: boolean) => {
+    setArchivedOnly(checked);
+    setSelected(null);
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous);
+      for (const key of ["archived_page", "alert_page"]) next.delete(key);
+      return next;
+    });
+  };
   const { offset, setOffset } = useUrlPagination({ pageParam: "batch_page" });
   const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -41,6 +57,7 @@ export default function AllDataPage() {
     try {
       if (id) await api.restoreArchive(id);
       else await api.archiveDatabase();
+      clearResourceCache();
       setNotice({ key: id ? "archive_restored_done" : "archive_done" });
       setSelected(null);
       setVersion(value => value + 1);
@@ -53,11 +70,8 @@ export default function AllDataPage() {
   };
   return <div className="space-y-6 [overflow-anchor:none]">
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><h1 className="flex items-center gap-2 text-xl font-bold"><Archive className="size-5 text-primary" />{t("archive_nav")}</h1><p className="mt-2 max-w-prose text-sm text-muted-foreground">{t("archive_description")}</p></div>
+      <h1 className="flex items-center gap-2 text-xl font-bold"><Archive className="size-5 text-primary" />{t("archive_nav")}<InfoTooltip label={t("archive_help_label")} text={t("archive_description")} /></h1>
       <ArchiveDataButton busy={busy === "archive"} disabled={!!busy || resource.loading || sync.syncing} archive={() => { void change(); }} />
-    </div>
-    <div className="flex flex-wrap gap-2" role="group" aria-label={t("archive_views")}>
-      {(["traffic", "alerts", "sessions"] as const).map(item => <Button key={item} variant={item === view ? "secondary" : "ghost"} aria-pressed={item === view} onClick={() => { setView(item); setSelected(null); }}>{t(`archive_${item}`)}</Button>)}
     </div>
     <OperationNotice notice={notice} close={() => setNotice(null)} />
     <Card><CardHeader><CardTitle>{t("archive_batches")}</CardTitle></CardHeader><CardContent>
@@ -74,9 +88,17 @@ export default function AllDataPage() {
         </TableRow>)}</TableBody>
       </PaginatedTable>}
     </CardContent></Card>
-    {view === "traffic" && <ConnectionBrowser includeArchived refreshVersion={version} />}
-    {view === "alerts" && <AllAlerts refreshVersion={version} />}
-    {view === "sessions" && <AnalysisSessions includeArchived refreshVersion={version} inspect={setSelected} />}
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("archive_views")}>
+      {(["traffic", "alerts", "sessions"] as const).map(item => <Button key={item} variant="outline" className={item === view ? "bg-accent text-accent-foreground" : ""} aria-pressed={item === view} onClick={() => { setView(item); setSelected(null); }}>{t(`archive_${item}`)}</Button>)}
+      <span className="text-sm text-muted-foreground">{t(archivedOnly ? "archive_only_note" : "traffic_including_archived")}</span>
+      <div className="flex items-center gap-2 sm:ml-auto">
+        <Switch id={switchId} checked={archivedOnly} onCheckedChange={changeArchiveFilter} />
+        <Label htmlFor={switchId}>{t("archive_hide_current")}</Label>
+      </div>
+    </div>
+    {view === "traffic" && <ConnectionBrowser includeArchived archivedOnly={archivedOnly} refreshVersion={version} />}
+    {view === "alerts" && <AllAlerts archivedOnly={archivedOnly} refreshVersion={version} />}
+    {view === "sessions" && <AnalysisSessions includeArchived archivedOnly={archivedOnly} refreshVersion={version} inspect={setSelected} />}
     {selected && <FindingDetails key={selected.id} alert={selected} includeArchived close={() => setSelected(null)} />}
   </div>;
 }

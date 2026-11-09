@@ -20,6 +20,7 @@ def get_connections(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     include_archived: bool = Query(False),
+    archived_only: bool = Query(False),
     db: Session = Depends(get_db)
 ):
     """Retrieve ingested Zeek network flow records with pagination and filters."""
@@ -31,7 +32,8 @@ def get_connections(
         conn_state=conn_state,
         limit=limit,
         offset=offset,
-        include_archived=include_archived
+        include_archived=include_archived,
+        archived_only=archived_only
     )
     items, total = service.get_connections(filters)
     return {

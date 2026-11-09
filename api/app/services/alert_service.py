@@ -1,8 +1,10 @@
 from typing import List, Tuple, Dict, Any, Optional
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy.orm import Session
 from app.models.alert import Alert
 from app.repositories.alert_repository import AlertRepository
-from app.schemas.alert import AlertFilter
+from app.schemas.alert import AlertFilter, AlertBulkStatusUpdate
 
 
 class AlertService:
@@ -12,7 +14,6 @@ class AlertService:
 
     def get_alerts(self, filters: AlertFilter) -> Tuple[List[Alert], int]:
         return self.alert_repo.get_filtered(
-            severity=filters.severity,
             attack_type=filters.attack_type,
             status=filters.status,
             src_ip=filters.src_ip,
@@ -20,18 +21,55 @@ class AlertService:
             offset=filters.offset,
             provenance=filters.provenance,
             include_archived=filters.include_archived,
+            archived_only=filters.archived_only,
         )
 
     def get_stats(self, provenance: str | None = None) -> Dict[str, Any]:
         return self.alert_repo.get_stats(provenance)
 
+    def get_daily_counts(self, period_start: date, timezone_name: str, period: str = "week"):
+        if not 1900 <= period_start.year < 9999:
+            raise ValueError("period_start must be between years 1900 and 9998")
+        if period not in ("week", "month"):
+            raise ValueError("Unknown period")
+        if period == "week" and period_start.weekday() != 0:
+            raise ValueError("A week must start on Monday")
+        if period == "month" and period_start.day != 1:
+            raise ValueError("A month must start on its first day")
+        try:
+            zone = ZoneInfo(timezone_name)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("Unknown timezone") from exc
+        if period == "week":
+            day_count = 7
+        else:
+            from calendar import monthrange
+            day_count = monthrange(period_start.year, period_start.month)[1]
+        dates = [period_start + timedelta(days=index) for index in range(day_count + 1)]
+        boundaries = [datetime.combine(day, time.min, zone).astimezone(timezone.utc) for day in dates]
+        counts = self.alert_repo.count_daily(boundaries)
+        return {"period_start": period_start, "period": period, "timezone": timezone_name,
+                "today": datetime.now(zone).date(),
+                "days": [{"date": day, "count": count} for day, count in zip(dates, counts)]}
+
     def update_alert_status(self, alert_id: int, new_status: str) -> Optional[Alert]:
         return self.alert_repo.update_status(alert_id, new_status)
 
-    def export_alerts_csv(self, severity: Optional[str] = None, provenance: str | None = None) -> str:
+    def update_many_statuses(self, payload: AlertBulkStatusUpdate):
+        try:
+            updated = self.alert_repo.update_many_statuses(payload.ids, payload.status)
+            if set(updated) != set(payload.ids):
+                raise LookupError("One or more selected findings are unavailable")
+            self.db.commit()
+            return {"updated": len(updated)}
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def export_alerts_csv(self, provenance: str | None = None) -> str:
         import csv
         import io
-        alerts = self.alert_repo.get_all_for_export(severity, provenance)
+        alerts = self.alert_repo.get_all_for_export(provenance)
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([
@@ -56,8 +94,8 @@ class AlertService:
             ])
         return output.getvalue()
 
-    def export_alerts_json(self, severity: Optional[str] = None, provenance: str | None = None) -> List[Dict[str, Any]]:
-        alerts = self.alert_repo.get_all_for_export(severity, provenance)
+    def export_alerts_json(self, provenance: str | None = None) -> List[Dict[str, Any]]:
+        alerts = self.alert_repo.get_all_for_export(provenance)
         return [
             {
                 "id": a.id,

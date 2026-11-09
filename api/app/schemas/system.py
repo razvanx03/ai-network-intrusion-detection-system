@@ -15,7 +15,6 @@ class SystemHealthResponse(BaseModel):
     sensor_mode: str
     connections_total: int
     alerts_total: int
-    legacy_alerts_total: int
 
 
 class FetchAnalyzeResponse(BaseModel):

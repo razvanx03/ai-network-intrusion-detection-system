@@ -22,8 +22,9 @@ class AnalysisRepository:
         self.db.flush()
         return session
 
-    def page(self, limit: int, offset: int, include_archived: bool = False):
-        condition = True if include_archived else AnalysisSession.archive_batch_id.is_(None)
+    def page(self, limit: int, offset: int, include_archived: bool = False, archived_only: bool = False):
+        condition = (AnalysisSession.archive_batch_id.is_not(None) if archived_only
+                     else True if include_archived else AnalysisSession.archive_batch_id.is_(None))
         total = self.db.scalar(select(func.count()).select_from(AnalysisSession).where(condition)) or 0
         items = self.db.scalars(select(AnalysisSession).where(condition).order_by(
             desc(AnalysisSession.started_at), desc(AnalysisSession.id),
@@ -54,13 +55,12 @@ class AnalysisRepository:
         items = self.db.scalars(select(Alert).where(condition).order_by(Alert.id).offset(offset).limit(limit)).all()
         return list(items), total
 
-    def alert_connections(self, session_id: str, alert_id: int, limit: int, offset: int):
+    def alert_connections(self, session_id: str, alert_id: int):
         alert = self.db.scalar(select(Alert).where(Alert.id == alert_id, Alert.analysis_session_id == session_id))
         if alert is None:
             return None
         query = select(Connection).join(AlertConnection, AlertConnection.connection_id == Connection.id).where(AlertConnection.alert_id == alert_id)
-        count = self.db.scalar(select(func.count()).select_from(AlertConnection).where(AlertConnection.alert_id == alert_id)) or 0
-        return list(self.db.scalars(query.order_by(Connection.id).offset(offset).limit(limit)).all()), count
+        return list(self.db.scalars(query.order_by(Connection.id)).all())
 
     def finish(self, session_id: str, status: str, error_code: str | None = None):
         session = self.get(session_id)
