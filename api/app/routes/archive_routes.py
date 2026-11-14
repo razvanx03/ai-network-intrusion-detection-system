@@ -12,6 +12,7 @@ from app.services.analysis_service import AnalysisBusyError
 from app.models.archive_batch import ArchiveBatch
 from app.repositories.archive_snapshot_repository import ArchiveSnapshotRepository
 from app.schemas.protocol_event import ContextType, ProtocolEventResponse
+from app.repositories.reset_repository import ResetBusyError
 
 router = APIRouter(prefix="/archives", tags=["Archives"], dependencies=[Depends(get_current_user)])
 
@@ -28,6 +29,8 @@ def change(db, batch_id=None):
         return ArchiveService(db).change(batch_id)
     except AnalysisBusyError as exc:
         raise HTTPException(409, {"code": "analysis_busy"}) from exc
+    except ResetBusyError as exc:
+        raise HTTPException(409, {"code": "reset_pending"}) from exc
     except EmptyArchiveError as exc:
         raise HTTPException(409, {"code": "archive_empty"}) from exc
     except ArchiveNotFoundError as exc:

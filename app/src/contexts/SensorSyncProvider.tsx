@@ -9,9 +9,11 @@ export function SensorSyncProvider({ children }: { children: ReactNode }) {
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState<unknown>(null);
   const pending = useRef<Promise<AnalysisResult> | null>(null);
+  const resetPending = useRef<Promise<void> | null>(null);
   const active = useRef(true);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const analyze = useCallback((automatic = false): Promise<AnalysisResult> => {
+    if (resetPending.current) return Promise.reject(new ApiError(409, "reset_pending"));
     if (pending.current) return pending.current;
     setSyncing(true);
     setError(null);
@@ -30,5 +32,18 @@ export function SensorSyncProvider({ children }: { children: ReactNode }) {
     pending.current = task;
     return task;
   }, []);
-  return <SensorSyncContext.Provider value={{ syncing, revision, error, dismissError: () => setError(null), analyze }}>{children}</SensorSyncContext.Provider>;
+  const resetData = useCallback((operationId: string): Promise<void> => {
+    if (resetPending.current) return resetPending.current;
+    if (pending.current) return Promise.reject(new ApiError(409, "analysis_busy"));
+    setSyncing(true);
+    setError(null);
+    const task = api.resetData(operationId).then(() => undefined).finally(() => {
+      resetPending.current = null;
+      clearResourceCache();
+      if (active.current) { setSyncing(false); setRevision(value => value + 1); }
+    });
+    resetPending.current = task;
+    return task;
+  }, []);
+  return <SensorSyncContext.Provider value={{ syncing, revision, error, dismissError: () => setError(null), analyze, resetData }}>{children}</SensorSyncContext.Provider>;
 }

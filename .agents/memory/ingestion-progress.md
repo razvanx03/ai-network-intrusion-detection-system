@@ -34,6 +34,9 @@ record without a final newline is accepted; partial active-file lines remain unr
 
 User decision, 2026-11-07: replace destructive database clearing with reversible
 archive batches and remove cursor reset entirely from the UI/API/client/repository.
+That UI decision was superseded on 2026-11-14 by an explicitly confirmed full
+data-and-VM reset; see [data-reset.md](data-reset.md). Archival itself still leaves
+cursors and VM logs unchanged.
 Cursors remain unchanged during archival and restoration. Archived connection UIDs
 still participate in deduplication, but not in stored analysis or current views.
 All data explicitly includes archived traffic, alerts and sessions, with whole-lot

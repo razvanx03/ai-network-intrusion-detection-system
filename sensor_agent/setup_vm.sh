@@ -9,7 +9,7 @@ Ubuntu VM setup: the four former setup scripts are merged into this ONE file.
 
 Run INSIDE Ubuntu 24.04, preferably from its VM console:
   sudo bash setup_vm.sh --management-ip 192.168.56.101
-Copy this file, collector.py and requirements.txt together first. An optional
+Copy the sensor_agent directory, including reset_logs.py and nids-reset.service, first. An optional
 .env beside them supplies the existing API key; otherwise a fresh key is generated.
 The management address must already exist on the host-only adapter. VirtualBox
 adapters and the Windows client's network settings are configured separately.
@@ -27,6 +27,7 @@ readonly SOURCE_DIR
 readonly ZEEK_DIR=/opt/zeek
 readonly AGENT_DIR=/opt/nids-sensor
 readonly CAPTURE_HELPER=/usr/local/sbin/nids-zeek-capture
+readonly RESET_HELPER=/usr/local/libexec/nids-reset-logs.py
 readonly NETPLAN_FILE=/etc/netplan/99-nids-lab.yaml
 readonly REPO_URL=https://download.opensuse.org/repositories/security:/zeek/xUbuntu_24.04
 external_if=enp0s3
@@ -159,10 +160,10 @@ except (OSError, ValueError):
     sys.exit('Sensor .env preflight failed. Use unique nonempty settings from .env.example, a real API key, standard log path and valid request limits. No secret was printed or replaced.')
 PY
 fi
-for path in "$NETPLAN_FILE" "$CAPTURE_HELPER" /etc/systemd/system/zeek.service /etc/systemd/system/nids-sensor.service /etc/sysctl.d/99-nids-gateway.conf; do
+for path in "$NETPLAN_FILE" "$CAPTURE_HELPER" "$RESET_HELPER" /etc/systemd/system/nids-reset.service /etc/systemd/system/zeek.service /etc/systemd/system/nids-sensor.service /etc/sysctl.d/99-nids-gateway.conf; do
     [[ ! -L "$path" ]] || die "Refusing a symlink/mask at $path"
 done
-for unit in zeek.service nids-sensor.service; do
+for unit in zeek.service nids-sensor.service nids-reset.service; do
     [[ -z "$(systemctl show "$unit" -p DropInPaths --value)" ]] || die "Review existing overrides for $unit first."
     case "$(systemctl show "$unit" -p ActiveState --value)" in
         active|inactive|failed) ;;
@@ -304,7 +305,7 @@ apt-get update
 printf 'iptables-persistent iptables-persistent/autosave_v4 boolean false\niptables-persistent iptables-persistent/autosave_v6 boolean false\n' | debconf-set-selections
 apt-get install -y curl gpg ca-certificates ethtool iptables iptables-persistent python3-venv python3-yaml acl
 # Stop only the existing managed instances before changing capture/network state.
-for unit in nids-sensor.service zeek.service; do
+for unit in nids-sensor.service nids-reset.service zeek.service; do
     if [[ "$(systemctl show "$unit" -p LoadState --value)" != not-found ]]; then systemctl stop "$unit"; fi
 done
 pgrep -x zeek >/dev/null && die 'An unmanaged Zeek process remains; stop it manually before setup.'
@@ -506,6 +507,8 @@ PY
 stage=sensor-autostart
 install -d -o root -g root -m 0755 "$AGENT_DIR"
 write_file "$SOURCE_DIR/collector.py" "$AGENT_DIR/collector.py" 0644
+install -d -o root -g root -m 0755 /usr/local/libexec
+write_file "$SOURCE_DIR/reset_logs.py" "$RESET_HELPER" 0755
 write_file "$SOURCE_DIR/requirements.txt" "$AGENT_DIR/requirements.txt" 0644
 (
     umask 022
@@ -570,11 +573,14 @@ for root in (module['LOG_DIR'], module['CURRENT_LOG_DIR']):
                     module['parse_record'](first)
 print('Sensor configuration and log/archive permissions verified as the service user.')
 PY
+sed "s/@AGENT_UID@/$(id -u "$agent_user")/g" "$SOURCE_DIR/nids-reset.service" > "$work_dir/nids-reset.service"
+systemd-analyze verify "$work_dir/nids-reset.service"
+write_file "$work_dir/nids-reset.service" /etc/systemd/system/nids-reset.service 0644
 cat > "$work_dir/nids-sensor.service" <<EOF
 [Unit]
 Description=AI NIDS Zeek log reader
-Wants=network-online.target zeek.service
-After=network-online.target zeek.service
+Wants=network-online.target zeek.service nids-reset.service
+After=network-online.target zeek.service nids-reset.service
 
 [Service]
 Type=simple
@@ -597,6 +603,8 @@ EOF
 systemd-analyze verify "$work_dir/nids-sensor.service"
 write_file "$work_dir/nids-sensor.service" /etc/systemd/system/nids-sensor.service 0644
 systemctl daemon-reload
+systemctl enable nids-reset.service
+systemctl restart nids-reset.service
 systemctl enable nids-sensor.service
 systemctl restart nids-sensor.service
 runuser -u "$agent_user" -g "$(id -gn "$agent_user")" -G zeek -- "$AGENT_DIR/.venv/bin/python" - "$AGENT_DIR/.env" "$management_ip" "$agent_port" <<'PY'

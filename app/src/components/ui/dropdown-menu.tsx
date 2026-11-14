@@ -5,6 +5,11 @@ import { cn } from "@/lib/utils";
 export const DropdownMenu = Primitive.Root;
 export const DropdownMenuTrigger = Primitive.Trigger;
 export const DropdownMenuRadioGroup = Primitive.RadioGroup;
+export function DropdownMenuItem({ className, ...props }: React.ComponentProps<typeof Primitive.Item>) {
+  return <Primitive.Item className={cn(
+    "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50", className,
+  )} {...props} />;
+}
 export function DropdownMenuCheckboxItem({ className, children, ...props }: React.ComponentProps<typeof Primitive.CheckboxItem>) {
   return <Primitive.CheckboxItem className={cn(
     "relative flex cursor-pointer select-none items-center rounded-sm py-2 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50", className,

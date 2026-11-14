@@ -14,6 +14,7 @@ present state of a VM. They are not executable controls.
 | [Model evaluation boundaries](.agents/memory/ai-evaluation.md) | Changing inference, evaluating datasets or reporting detection results |
 | [Manual web requests](.agents/memory/manual-web-requests.md) | Changing frontend loading, polling or session initialization |
 | [Archive history](.agents/memory/archive-history.md) | Changing archive membership, restoration or historical batch browsing |
+| [Explicit full reset](.agents/memory/data-reset.md) | Changing destructive reset, maintenance guards or VM log cleanup |
 
 Update a focused note after a confirmed correction rather than appending a chat
 transcript. Keep evidence, dates for historical observations, and remaining limits

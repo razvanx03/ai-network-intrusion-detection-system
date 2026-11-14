@@ -20,7 +20,9 @@ paginated, batch-scoped and independent of live tables. The read-only browser is
 Legacy batches have snapshot_version=NULL and show totals with an explicit
 unavailability message; never silently substitute current records. New context
 events received after archiving belong to live data and later snapshots, not the
-older copy. There is no snapshot rewrite or deletion endpoint.
+older copy. There is no per-snapshot rewrite or deletion endpoint. The separately
+confirmed full data reset added on 2026-11-14 clears all snapshots too; see
+[data-reset.md](data-reset.md).
 
 Verification: isolated backend unit tests cover transaction rollback, detached
 payloads, membership, context whitelist, legacy rejection, batch isolation and

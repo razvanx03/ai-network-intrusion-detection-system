@@ -46,6 +46,12 @@ class SensorFileBatch(BaseModel):
 logger = logging.getLogger("nids.sensor_client")
 
 
+class SensorResetError(RuntimeError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
 class SensorClient:
     """
     Client for interacting with the Zeek sensor agent.
@@ -74,6 +80,32 @@ class SensorClient:
     async def health(self):
         async with httpx.AsyncClient(timeout=5.0) as client:
             return await client.get(f"{self.base_url}/health", headers={"X-API-Key": self.api_key})
+
+    async def require_reset_support(self):
+        if self.mock_mode:
+            raise SensorResetError("reset_not_supported")
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{self.base_url}/reset/capabilities", headers={"X-API-Key": self.api_key})
+                if response.status_code == 404:
+                    raise SensorResetError("reset_not_supported")
+                response.raise_for_status()
+                if response.json().get("supported") is not True:
+                    raise SensorResetError("reset_not_supported")
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            raise SensorResetError("reset_sensor_failed") from exc
+
+    async def reset_logs(self, operation_id):
+        try:
+            async with httpx.AsyncClient(timeout=310.0) as client:
+                response = await client.post(f"{self.base_url}/reset", headers={"X-API-Key": self.api_key},
+                                             json={"operation_id": operation_id, "confirmation": "RESET"})
+                response.raise_for_status()
+                body = response.json()
+                if body.get("operation_id") != operation_id or body.get("status") != "completed":
+                    raise SensorResetError("reset_sensor_failed")
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            raise SensorResetError("reset_sensor_failed") from exc
 
     async def host_status(self):
         return await probe_host(self.base_url)

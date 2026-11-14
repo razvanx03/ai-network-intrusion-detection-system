@@ -71,6 +71,12 @@ Do not scroll the page to show details. On 2026-11-09 desktop checks confirmed
 unchanged page scroll after closing and focus restored to the Details button;
 the mobile dialog stayed within the viewport with internal table scrolling.
 Finding status menus also use nonmodal DropdownMenu to avoid scroll locking.
+Settings uses the same nonmodal behavior. On 2026-11-14 the user's earlier
+settings-shift report was checked against the current version: opening/closing
+the menu preserved desktop main/button X coordinates (0/1149 px), body margin
+(0 px), overflow and viewport width. Mobile main/button X stayed 0/291 px with
+375 px document/client width. The nonmodal fix was already present from the
+reset-menu change; no further frontend mutation was needed for this report.
 The dashboard replaces severity with row checkboxes; selection is cleared when
 changing page/page size or archiving. Bulk status updates use one transaction,
 reject unavailable/archived findings without partial changes, and cap at 500 IDs.

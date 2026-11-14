@@ -2,6 +2,9 @@ import type { TranslationKey } from "@/i18n";
 import { ApiError } from "./api";
 export function errorKey(error: unknown): TranslationKey {
   if (error instanceof ApiError) {
+    if (error.code === "reset_not_supported") return "reset_not_supported";
+    if (error.code === "reset_sensor_failed") return "reset_sensor_failed";
+    if (error.code === "reset_pending") return "reset_resume";
     if (error.code === "archive_empty") return "archive_empty";
     if (error.code === "archive_not_found") return "archive_not_found";
     if (error.code === "archive_snapshot_unavailable") return "archive_snapshot_unavailable";

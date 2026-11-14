@@ -1,7 +1,7 @@
 # Zeek sensor agent
 
 The backend pulls connection and DNS/HTTP/TLS logs on demand. `collector.py` is the authenticated,
-read-only HTTP reader running on Ubuntu; the main API, database and AI inference
+HTTP log reader running on Ubuntu; the main API, database and AI inference
 remain on the Windows host. Ingestion progress belongs to backend SQLite.
 
 Collector 2.4 discovers `conn.log`, `dns.log`, `http.log`, `ssl.log` and their
@@ -193,7 +193,7 @@ HTTPS because HTTP sends the API key without transport encryption.
   or deleted. Connection/authentication failures and invalid transport contracts
   still fail the operation rather than masquerading as an empty sensor.
 - Archiving/restoring backend data never resets SQLite cursors or changes VM logs.
-  The application exposes no reset-cursor or destructive database-clear operation.
+  The separate, explicitly confirmed full reset clears both VM logs and backend data/cursors.
   Archived UIDs remain deduplicated; use All data to restore an archive batch.
 - There is no agent `/logs/ack` or `DELETE /logs` endpoint in this protocol.
 - Retain archives longer than the maximum interval between successful pulls. Deleted
@@ -202,3 +202,34 @@ HTTPS because HTTP sends the API key without transport encryption.
 
 Verify actual client traffic, current-log ingestion, archived-log ingestion, rotation
 with an unread tail, and a repeat pull. Health proves HTTP availability, not capture.
+
+## Explicit full reset
+
+Normal discovery/reads and archive/restore operations never delete VM logs.
+The application's Settings menu has a separate permanent full reset requiring
+typed RESET confirmation. It is not a troubleshooting action to run automatically.
+
+For an existing installation, copy the updated sensor_agent directory to Ubuntu
+and run `sudo bash sensor_agent/install_reset.sh`. It discovers the existing
+non-root collector service/user, updates collector.py and installs nids-reset.service
+with the root-owned reset_logs.py broker. It preserves .env and gateway settings,
+backs up replaced files under /var/backups, and does not invoke log cleanup.
+The full setup_vm.sh installer includes the same service.
+
+GET /reset/capabilities and POST /reset require the sensor API key. The POST
+requires a 32-character lowercase hexadecimal operation_id and confirmation RESET.
+The collector retains NoNewPrivileges and contacts only the restricted Unix socket
+/run/nids-reset/control.sock. The broker verifies the peer UID, stops zeek.service,
+refuses cleanup if Zeek/rotation processes remain, clears .log/.log.gz files in
+/opt/zeek/logs and /opt/zeek/spool/zeek without following symlinks, and restarts Zeek.
+Control/configuration files stay. Capture resumes immediately, so fresh traffic
+can appear after reset. Root-only recovery receipts in /var/lib/nids-reset prevent
+retries of a completed operation from deleting newer captures. Do not delete these
+receipts to resolve an interrupted reset. Retry from the application instead.
+
+The backend persists a reset guard before issuing cleanup and deletes its own
+traffic/archive/context/session/cursor data only after the VM acknowledges completion.
+A timeout is an uncertain outcome, not proof that the VM did nothing: the guard
+remains and the same operation must be resumed. The local and remote systems do
+not support atomic rollback of permanent deletion. Neither VM installation nor
+a live destructive reset is performed by unit checks.

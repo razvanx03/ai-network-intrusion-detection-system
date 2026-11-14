@@ -21,6 +21,10 @@ from app.repositories.sensor_cursor_repository import CursorConflictError
 from app.models.user import User
 from app.services.analysis_service import AnalysisBusyError, AnalysisRunError
 from app.routes.analysis_routes import run_error
+from app.schemas.reset import ResetRequest, ResetStatus
+from app.repositories.reset_repository import ResetRepository, ResetBusyError
+from app.services.reset_service import ResetService
+from app.integrations.sensor_client import SensorResetError
 
 router = APIRouter(prefix=SYSTEM_ROUTE_PREFIX, tags=["System & Sensor Operations"], dependencies=[Depends(get_current_user)])
 
@@ -46,10 +50,30 @@ async def fetch_and_analyze(user: User = Depends(get_current_user), db: Session 
         return await service.fetch_and_analyze(user.id)
     except AnalysisBusyError as exc:
         raise HTTPException(409, "An analysis is already running.") from exc
+    except ResetBusyError as exc:
+        raise HTTPException(409, {"code": "reset_pending"}) from exc
     except AnalysisRunError as exc:
         raise run_error(exc) from exc
     except CursorConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/reset-status", response_model=ResetStatus)
+def reset_status(db: Session = Depends(get_db)):
+    operation = ResetRepository(db).running()
+    return {"pending": operation is not None, "operation_id": operation.id if operation else None}
+
+
+@router.post("/reset-data")
+async def reset_data(request: ResetRequest, db: Session = Depends(get_db)):
+    try:
+        return await ResetService(db).run(request.operation_id)
+    except AnalysisBusyError as exc:
+        raise HTTPException(409, {"code": "analysis_busy"}) from exc
+    except ResetBusyError as exc:
+        raise HTTPException(409, {"code": "reset_pending"}) from exc
+    except SensorResetError as exc:
+        raise HTTPException(503, {"code": exc.code}) from exc
 
 
 

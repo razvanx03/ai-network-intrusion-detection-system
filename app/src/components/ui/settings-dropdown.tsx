@@ -1,4 +1,6 @@
-import { Languages, Settings, SunMoon } from "lucide-react";
+import { Languages, Settings, SunMoon, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { ResetDataDialog } from "@/components/reset-data-dialog";
 import { useI18n } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,11 +11,13 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 export function SettingsDropdown() {
   const { language, setLanguage, theme, setTheme, t } = useI18n();
+  const [resetOpen, setResetOpen] = useState(false);
   return (
-    <DropdownMenu>
+    <><DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="size-8 sm:size-10" aria-label={t("settings_title")}>
           <Settings className="size-4" />
@@ -49,7 +53,10 @@ export function SettingsDropdown() {
             {t("theme_light")}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setResetOpen(true)}><Trash2 className="mr-2 size-4" />{t("reset_menu")}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    {resetOpen && <ResetDataDialog close={() => setResetOpen(false)} />}</>
   );
 }

@@ -7,4 +7,5 @@ export const SensorSyncContext = createContext<{
   error: unknown;
   dismissError: () => void;
   analyze: (automatic?: boolean) => Promise<AnalysisResult>;
+  resetData: (operationId: string) => Promise<void>;
 } | null>(null);

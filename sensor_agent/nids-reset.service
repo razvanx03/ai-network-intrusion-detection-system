@@ -1,0 +1,24 @@
+[Unit]
+Description=AI NIDS restricted Zeek log reset broker
+After=zeek.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 -I /usr/local/libexec/nids-reset-logs.py @AGENT_UID@
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=nids-reset
+RuntimeDirectoryMode=0755
+StateDirectory=nids-reset
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/zeek/logs /opt/zeek/spool/zeek
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

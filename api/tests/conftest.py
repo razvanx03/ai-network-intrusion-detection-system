@@ -42,7 +42,9 @@ def forbid_external_io(monkeypatch):
 
 @pytest.fixture
 def db():
-    return MagicMock(spec=Session)
+    session = MagicMock(spec=Session)
+    session.scalar.return_value = None
+    return session
 
 
 @pytest.fixture

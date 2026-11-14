@@ -11,6 +11,7 @@ from app.repositories.analysis_repository import AnalysisRepository
 from app.repositories.sensor_cursor_repository import CursorConflictError
 from app.schemas.analysis import AnalysisRequest, AnalysisSessionResponse
 from app.services.ingestion_service import IngestionService
+from app.repositories.reset_repository import ResetRepository
 
 
 class AnalysisBusyError(RuntimeError):
@@ -46,11 +47,15 @@ class AnalysisService:
                 detector_name=detector.name, detector_version=detector.version,
                 preparation_version=PREPARATION_VERSION,
             )
+            ResetRepository(self.db).require_idle()
             self.db.commit()
         except IntegrityError as exc:
             self.db.rollback()
             if self.sessions.running() is not None:
                 raise AnalysisBusyError("An analysis is already running.") from exc
+            raise
+        except Exception:
+            self.db.rollback()
             raise
         phase = "processing_failed"
         summary: dict[str, int] = {}

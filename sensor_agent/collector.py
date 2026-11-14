@@ -7,6 +7,7 @@ import hmac
 import json
 import math
 import os
+import socket
 import zlib
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -14,6 +15,8 @@ from typing import Any, BinaryIO
 import uvicorn
 from dotenv import dotenv_values
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 # Load .env from the same directory as this script.
 ENV_FILE = Path(__file__).with_name(".env")
@@ -50,12 +53,51 @@ if not 1024 <= MAX_BYTES <= 16 * 1024 * 1024:
 if not 1024 <= MAX_LINE_BYTES <= MAX_BYTES:
     raise RuntimeError("MAX_LINE_BYTES must be between 1 KiB and MAX_BATCH_BYTES.")
 
-app = FastAPI(title="Zeek Sensor Agent", version="2.4.0")
+app = FastAPI(title="Zeek Sensor Agent", version="2.5.0")
+RESET_SOCKET = Path("/run/nids-reset/control.sock")
+
+
+class ResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    confirmation: Literal["RESET"]
+
+
+def reset_supported():
+    return LOG_DIR == Path("/opt/zeek/logs") and RESET_SOCKET.is_socket()
 
 
 def authenticate(x_api_key: str | None = Header(default=None)):
     if x_api_key is None or not hmac.compare_digest(x_api_key, API_KEY):
         raise HTTPException(status_code=401, detail="Invalid API key.")
+
+
+@app.get("/reset/capabilities", dependencies=[Depends(authenticate)])
+def reset_capabilities():
+    return {"supported": reset_supported()}
+
+
+@app.post("/reset", dependencies=[Depends(authenticate)])
+def reset_logs(request: ResetRequest):
+    if not reset_supported():
+        raise HTTPException(409, detail={"code": "reset_not_supported"})
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as control:
+            control.settimeout(300)
+            control.connect(str(RESET_SOCKET))
+            control.sendall((request.model_dump_json() + "\n").encode())
+            response = b""
+            while not response.endswith(b"\n"):
+                chunk = control.recv(4096)
+                if not chunk or len(response) + len(chunk) > 16384:
+                    raise ValueError("Invalid reset receipt.")
+                response += chunk
+        result = json.loads(response)
+        if result.get("operation_id") != request.operation_id or result.get("status") != "completed":
+            raise ValueError("Reset incomplete.")
+        return result
+    except (OSError, ValueError) as exc:
+        raise HTTPException(503, detail={"code": "reset_sensor_failed"}) from exc
 
 
 def resolve_log_file(file: str) -> Path:

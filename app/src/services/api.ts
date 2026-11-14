@@ -89,6 +89,10 @@ function query(params: Record<string, string | string[] | number | boolean | und
   return `?${result}`;
 }
 export const api = {
+  getResetStatus: (signal?: AbortSignal) => request<{ pending: boolean; operation_id: string | null }>("/system/reset-status", { signal }),
+  resetData: (operationId: string) => request<{ status: "completed" }>("/system/reset-data", {
+    method: "POST", body: JSON.stringify({ operation_id: operationId, confirmation: "RESET" }),
+  }),
   getSensorStatus: (signal?: AbortSignal) => request<SensorStatus>("/system/sensor-status", { signal }),
   getConnectionEvents: (id: number, kind: ContextType, offset: number, signal?: AbortSignal, includeArchived = false) =>
     request<Page<ProtocolEvent>>(`/logs/connections/${id}/events${query({ kind, limit: 50, offset, include_archived: includeArchived })}`, { signal }),

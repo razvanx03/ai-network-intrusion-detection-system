@@ -3,6 +3,7 @@ import gzip
 import importlib.util
 import io
 import json
+import sys
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -25,6 +26,7 @@ def collector(tmp_path, monkeypatch):
     path = Path(__file__).resolve().parents[3] / "sensor_agent" / "collector.py"
     spec = importlib.util.spec_from_file_location("unit_collector", path)
     module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "unit_collector", module)
     spec.loader.exec_module(module)
     return module
 
@@ -34,6 +36,15 @@ def archive(collector, name, content):
     path.parent.mkdir(exist_ok=True, parents=True)
     path.write_bytes(gzip.compress(content))
     return path
+
+
+def test_management_routes_require_agent_key_and_exact_confirmation(collector):
+    from pydantic import ValidationError
+    for route in collector.app.routes:
+        if route.path in ("/reset", "/reset/capabilities"):
+            assert any(d.call is collector.authenticate for d in route.dependant.dependencies)
+    with pytest.raises(ValidationError):
+        collector.ResetRequest(operation_id="a" * 32, confirmation="yes")
 
 
 def test_valid_sealed_json_without_newline_is_accepted(collector, raw_record):

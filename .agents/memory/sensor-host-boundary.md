@@ -1,7 +1,8 @@
 # Sensor and host responsibilities
 
 Confirmed architecture: Ubuntu is the monitored client gateway and runs Zeek plus
-the read-only Python collector. The main FastAPI backend, SQLite ingestion progress
+the Python collector (normal log reads are read-only; an explicitly authenticated
+full-reset endpoint was added on 2026-11-14). The main FastAPI backend, SQLite ingestion progress
 and AI inference run on the host. The backend pulls logs when the user requests
 analysis; the collector does not push logs or retrain the model.
 

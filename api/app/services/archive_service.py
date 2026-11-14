@@ -1,6 +1,7 @@
 from app.repositories.archive_repository import ArchiveRepository
 from app.repositories.analysis_repository import AnalysisRepository
 from app.repositories.archive_snapshot_repository import ArchiveSnapshotRepository
+from app.repositories.reset_repository import ResetRepository
 from app.services.analysis_service import AnalysisBusyError
 
 
@@ -24,6 +25,7 @@ class ArchiveService:
             batch = self.archives.restore(batch_id) if batch_id else self.archives.create()
             if batch is None:
                 raise ArchiveNotFoundError("Archive missing or already restored.")
+            ResetRepository(self.db).require_idle()
             if self.sessions.running() is not None:
                 raise AnalysisBusyError("Wait for the running analysis.")
             if batch_id:
