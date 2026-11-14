@@ -1,4 +1,6 @@
+import { ServerNameHeading } from "@/components/server-name-heading";
 import { useCallback, useState } from "react";
+import { Link } from "@/router";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,15 +14,12 @@ import { useResource } from "@/hooks/use-resource";
 import { useI18n } from "@/i18n";
 import { api } from "@/services/api";
 import { issueLabels, errorLabels } from "@/lib/analysis-labels";
-import { attackKeys } from "@/lib/display";
-import type { Alert } from "@/services/types";
 
-export function AnalysisSessions({ inspect, refreshVersion = 0, includeArchived = false, archivedOnly = false, alertsOnly = false, hideTitle = false }: { inspect: (alert: Alert) => void; refreshVersion?: number; includeArchived?: boolean; archivedOnly?: boolean; alertsOnly?: boolean; hideTitle?: boolean }) {
+export function AnalysisSessions({ refreshVersion = 0, includeArchived = false, archivedOnly = false, alertsOnly = false, hideTitle = false }: { refreshVersion?: number; includeArchived?: boolean; archivedOnly?: boolean; alertsOnly?: boolean; hideTitle?: boolean }) {
   const { t, language } = useI18n();
   const [selected, setSelected] = useState<string | null>(null);
   const [recordOffset, setRecordOffset] = useState(0);
   const [recordLimit, setRecordLimit] = useState(20);
-  const [alertOffset, setAlertOffset] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const scope = `${archivedOnly}:${alertsOnly}`;
   const [previousScope, setPreviousScope] = useState(scope);
@@ -28,35 +27,33 @@ export function AnalysisSessions({ inspect, refreshVersion = 0, includeArchived 
     setPreviousScope(scope);
     setSelected(null);
     setRecordOffset(0);
-    setAlertOffset(0);
   }
   const load = useCallback(async (signal: AbortSignal) => {
     const history = await api.getAnalysisSessions(signal, includeArchived, archivedOnly, alertsOnly);
     const session = selected && history.items.some(item => item.id === selected)
       ? await api.getAnalysisSession(selected, signal, includeArchived)
       : history.items[0] ?? null;
-    const details = session && expanded ? await Promise.all([
-      api.getAnalysisConnections(session.id, recordOffset, signal, includeArchived, recordLimit),
-      api.getAnalysisAlerts(session.id, alertOffset, signal, includeArchived),
-    ]) : null;
-    return { history, session, details, query: { selected, recordOffset, recordLimit, alertOffset, refreshVersion } };
-  }, [selected, recordOffset, recordLimit, alertOffset, expanded, refreshVersion, includeArchived, archivedOnly, alertsOnly]);
-  const cacheKey = `sessions:${includeArchived}:${archivedOnly}:${alertsOnly}:${selected}:${recordOffset}:${recordLimit}:${alertOffset}:${expanded}`;
+    const details = session && expanded ? await api.getAnalysisConnections(session.id, recordOffset, signal, includeArchived, recordLimit) : null;
+    return { history, session, details, query: { selected, recordOffset, recordLimit, refreshVersion } };
+  }, [selected, recordOffset, recordLimit, expanded, refreshVersion, includeArchived, archivedOnly, alertsOnly]);
+  const cacheKey = `sessions:${includeArchived}:${archivedOnly}:${alertsOnly}:${selected}:${recordOffset}:${recordLimit}:${expanded}`;
   const resource = useResource(load, true, refreshVersion, cacheKey);
   const data = resource.data;
   const sessionLoading = resource.loading && (!data || data.query.selected !== selected || data.query.refreshVersion !== refreshVersion);
   const recordsLoading = resource.loading && (sessionLoading || !data?.details || data.query.recordOffset !== recordOffset || data.query.recordLimit !== recordLimit);
-  const alertsLoading = resource.loading && (sessionLoading || !data?.details || data.query.alertOffset !== alertOffset);
   return (
     <Card>
-      {!hideTitle && <CardHeader><CardTitle>{t("analysis_sessions")}</CardTitle></CardHeader>}
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+        {!hideTitle && <CardTitle>{t("analysis_sessions")}</CardTitle>}
+        <Button asChild variant="outline" size="sm" className="ml-auto"><Link to="/import-problems">{t("import_problems_history")}</Link></Button>
+      </CardHeader>
       <CardContent className={`space-y-4 ${hideTitle ? "pt-6" : ""}`}>
         <DataState loading={resource.loading && !data} error={resource.error} hasData={!!data} retry={() => { void resource.refresh(); }} />
         {data && !data.history.items.length && <p className="text-sm text-muted-foreground">{t("analysis_no_sessions")}</p>}
         {data && data.history.items.length > 0 && <>
           <SessionSelector sessions={data.history.items} selectedId={selected ?? data.session?.id}
             loading={resource.loading} includeArchived={includeArchived}
-            onSelect={(id) => { setSelected(id); setRecordOffset(0); setAlertOffset(0); setExpanded(true); }} />
+            onSelect={(id) => { setSelected(id); setRecordOffset(0); setExpanded(true); }} />
         </>}
         {data?.session && data.session.file_issues.length > 0 && <Card role="status">
           <CardHeader><CardTitle>{t("analysis_skipped_files", { count: data.session.file_issues.length })}</CardTitle></CardHeader>
@@ -103,34 +100,24 @@ export function AnalysisSessions({ inspect, refreshVersion = 0, includeArchived 
           <h3 className="text-sm font-medium">{t("analysis_records")}</h3>
           <LoadingRegion loading={recordsLoading}>
           {data.details && <>
-          {data.details[0].items.length ? <Table>
+          {data.details.items.length ? <Table>
             <TableHeader><TableRow>
               <TableHead>{t("th_uid")}</TableHead><TableHead>{t("analysis_origin")}</TableHead>
-              <TableHead>{t("th_destination")}</TableHead><TableHead>{t("th_protocol")}</TableHead>
+              <TableHead>{t("th_destination")}</TableHead><TableHead><ServerNameHeading /></TableHead><TableHead>{t("th_protocol")}</TableHead>
             </TableRow></TableHeader>
-            <TableBody>{data.details[0].items.map(({ connection, file }) => <TableRow key={connection.id}>
+            <TableBody>{data.details.items.map(({ connection, file }) => <TableRow key={connection.id}>
               <TableCell className="font-mono text-xs" title={file ?? undefined}>{connection.uid}</TableCell>
               <TableCell className="font-mono text-xs">{connection.src_ip}:{connection.src_port}</TableCell>
               <TableCell className="font-mono text-xs">{connection.dst_ip}:{connection.dst_port}</TableCell>
+              <TableCell className="max-w-64 break-all text-xs">{connection.server_name ?? "—"}</TableCell>
               <TableCell>{connection.proto.toUpperCase()}</TableCell>
             </TableRow>)}</TableBody>
           </Table> : <p className="text-sm text-muted-foreground">{t("analysis_no_records")}</p>}
           </>}
           </LoadingRegion>
-          {data.details && <Pagination offset={data.details[0].offset} limit={data.details[0].limit} total={data.details[0].total}
+          {data.details && <Pagination offset={data.details.offset} limit={data.details.limit} total={data.details.total}
             loading={resource.loading} onChange={setRecordOffset}
             onLimitChange={(limit) => { setRecordLimit(limit); setRecordOffset(0); }} />}
-          {data.details && data.details[1].total > 0 && <>
-            <h3 className="text-sm font-medium">{t("analysis_alerts")}</h3>
-            <LoadingRegion loading={alertsLoading} contentClassName="space-y-2">
-            {data.details[1].items.map((alert) => <div key={alert.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span><Badge variant="outline">{t(`severity_${alert.severity}`)}</Badge> {attackKeys[alert.attack_type] ? t(attackKeys[alert.attack_type]) : alert.attack_type}</span>
-              <Button variant="ghost" size="sm" aria-label={t("finding_inspect", { id: alert.id })} onClick={() => inspect(alert)}>{t("finding_details")}</Button>
-            </div>)}
-            </LoadingRegion>
-            <Pagination offset={data.details[1].offset} limit={data.details[1].limit} total={data.details[1].total}
-              loading={resource.loading} onChange={setAlertOffset} />
-          </>}
           </>}
         </div>}
       </CardContent>

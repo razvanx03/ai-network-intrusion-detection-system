@@ -11,6 +11,7 @@ from app.routes.connection_routes import router as connection_router
 from app.routes.alert_routes import router as alert_router
 from app.routes.system_routes import router as system_router
 from app.routes.analysis_routes import router as analysis_router
+from app.routes.sensor_file_problem_routes import router as sensor_file_problem_router
 from app.repositories.analysis_repository import AnalysisRepository
 from app.ai import engine as ai_engine
 
@@ -62,6 +63,7 @@ app.include_router(connection_router, prefix=prefix)
 app.include_router(alert_router, prefix=prefix)
 app.include_router(system_router, prefix=prefix)
 app.include_router(analysis_router, prefix=prefix)
+app.include_router(sensor_file_problem_router, prefix=prefix)
 
 
 @app.get("/")

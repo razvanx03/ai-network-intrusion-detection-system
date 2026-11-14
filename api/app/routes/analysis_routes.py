@@ -4,7 +4,6 @@ from app.database.session import get_db
 from app.repositories.analysis_repository import AnalysisRepository
 from app.routes.deps import get_current_user
 from app.schemas.analysis import AnalysisSessionResponse
-from app.schemas.alert import AlertResponse
 from app.schemas.connection import ConnectionResponse
 from app.services.analysis_service import AnalysisRunError
 from app.services.connection_service import ConnectionService
@@ -43,21 +42,12 @@ def session_connections(session_id: str, limit: int = Query(50, ge=1, le=500),
     repo = AnalysisRepository(db)
     require_session(repo, session_id, include_archived)
     rows, total = repo.connection_page(session_id, limit, offset)
+    context = ConnectionService(db).with_context([connection for connection, _ in rows])
     return {
-        "items": [{"connection": ConnectionResponse.model_validate(connection),
-                   "file_id": link.file_id, "file": link.file} for connection, link in rows],
+        "items": [{"connection": connection,
+                   "file_id": link.file_id, "file": link.file} for connection, (_, link) in zip(context, rows)],
         "total": total, "limit": limit, "offset": offset,
     }
-
-
-@router.get("/{session_id}/alerts")
-def session_alerts(session_id: str, limit: int = Query(50, ge=1, le=500),
-                   offset: int = Query(0, ge=0), include_archived: bool = Query(False), db: Session = Depends(get_db)):
-    repo = AnalysisRepository(db)
-    require_session(repo, session_id, include_archived)
-    alerts, total = repo.alert_page(session_id, limit, offset)
-    return {"items": [AlertResponse.model_validate(alert) for alert in alerts],
-            "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/{session_id}/alerts/{alert_id}/connections", response_model=list[ConnectionResponse])

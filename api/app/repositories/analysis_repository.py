@@ -51,12 +51,6 @@ class AnalysisRepository:
         ).where(relation.session_id == session_id).order_by(Connection.id).offset(offset).limit(limit)).all()
         return rows, count
 
-    def alert_page(self, session_id: str, limit: int, offset: int):
-        condition = Alert.analysis_session_id == session_id
-        total = self.db.scalar(select(func.count()).select_from(Alert).where(condition)) or 0
-        items = self.db.scalars(select(Alert).where(condition).order_by(Alert.id).offset(offset).limit(limit)).all()
-        return list(items), total
-
     def alert_connections(self, session_id: str, alert_id: int):
         alert = self.db.scalar(select(Alert).where(Alert.id == alert_id, Alert.analysis_session_id == session_id))
         if alert is None:

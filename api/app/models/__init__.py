@@ -7,6 +7,7 @@ from app.models.archive_batch import ArchiveBatch, ArchiveRecord
 from app.models.system_reset import SystemReset
 from app.models.alert import Alert
 from app.models.sensor_cursor import SensorCursor
+from app.models.sensor_file_problem import SensorFileProblem
 from app.models.analysis_session import AnalysisSession, AnalysisSessionConnection, AlertConnection
 
-__all__ = ["Base", "User", "RevokedToken", "Connection", "ProtocolEvent", "ArchiveBatch", "ArchiveRecord", "SystemReset", "Alert", "SensorCursor", "AnalysisSession", "AnalysisSessionConnection", "AlertConnection"]
+__all__ = ["Base", "User", "RevokedToken", "Connection", "ProtocolEvent", "ArchiveBatch", "ArchiveRecord", "SystemReset", "Alert", "SensorCursor", "SensorFileProblem", "AnalysisSession", "AnalysisSessionConnection", "AlertConnection"]

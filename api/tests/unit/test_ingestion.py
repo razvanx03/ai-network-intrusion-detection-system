@@ -55,7 +55,7 @@ def test_cursor_conflict_prevents_connection_insert(ingestion, raw_record):
 
 def test_archives_skip_completed_and_resume_partial_before_current_file(ingestion, raw_record):
     service, sensor = ingestion
-    files = [SensorFile(file=name, file_id=str(index) * 64, archived=index != 3, first_ts=index)
+    files = [SensorFile(file=name, file_id=str(index) * 64, archived=index != 3, first_ts=index, fingerprint="f" * 64)
              for index, name in enumerate(["done.gz", "partial.gz", "current/conn.log"], 1)]
     sensor.discover_files.return_value = SensorFileList(files=files)
     service.cursors.get.side_effect = [SimpleNamespace(completed=True, offset=900),
@@ -74,7 +74,7 @@ def test_archives_skip_completed_and_resume_partial_before_current_file(ingestio
         ("partial.gz", 100, 200, False), ("partial.gz", 200, 300, True),
         ("current/conn.log", 0, 100, False)]
     assert sensor.read_file.await_count == 3
-    assert service.db.rollback.call_count == 3
+    assert service.db.rollback.call_count == 4
 
 
 def test_mock_acknowledgment_waits_until_consumer_resumes(ingestion, raw_record):
@@ -95,7 +95,7 @@ def test_mock_acknowledgment_waits_until_consumer_resumes(ingestion, raw_record)
 @pytest.mark.parametrize("invalid_record", [False, True])
 def test_bad_file_is_reported_and_next_file_is_read_without_advancing_bad_cursor(ingestion, raw_record, invalid_record):
     service, sensor = ingestion
-    files = [SensorFile(file=name, file_id=str(i) * 64, archived=True, first_ts=i)
+    files = [SensorFile(file=name, file_id=str(i) * 64, archived=True, first_ts=i, fingerprint="f" * 64)
              for i, name in enumerate(["broken.log.gz", "healthy.log.gz"], 1)]
     sensor.discover_files.return_value = SensorFileList(files=files,
         issues=[SensorFileIssue(file="bad-header.log.gz", code="corrupt_file")])
@@ -165,7 +165,7 @@ def test_existing_cursor_advance_succeeds_without_committing(db):
 
 def test_corrupt_tail_preserves_committed_prefix_and_does_not_complete_file(ingestion, raw_record):
     service, sensor = ingestion
-    file = SensorFile(file="partial.log.gz", file_id="a" * 64, archived=True, first_ts=1)
+    file = SensorFile(file="partial.log.gz", file_id="a" * 64, archived=True, first_ts=1, fingerprint="f" * 64)
     sensor.discover_files.return_value = SensorFileList(files=[file])
     service.cursors.get.return_value = SimpleNamespace(completed=False, offset=100)
     sensor.read_file.side_effect = [

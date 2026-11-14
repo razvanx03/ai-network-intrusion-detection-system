@@ -1,4 +1,5 @@
-import { Languages, Settings, SunMoon, Trash2 } from "lucide-react";
+import { Languages, Settings, SunMoon, Trash2, FileWarning } from "lucide-react";
+import { Link } from "@/router";
 import { useState } from "react";
 import { ResetDataDialog } from "@/components/reset-data-dialog";
 import { useI18n } from "@/i18n";
@@ -54,6 +55,7 @@ export function SettingsDropdown() {
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild><Link to="/import-problems"><FileWarning className="mr-2 size-4" />{t("import_problems_history")}</Link></DropdownMenuItem>
         <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setResetOpen(true)}><Trash2 className="mr-2 size-4" />{t("reset_menu")}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

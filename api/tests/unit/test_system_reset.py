@@ -108,7 +108,7 @@ def test_clear_removes_traffic_archives_and_cursors_but_preserves_authentication
     ResetRepository(db).clear_and_complete(ID)
     deletes = [call.args[0].table.name for call in db.execute.call_args_list if call.args[0].is_delete]
     assert deletes == ["archive_records", "alert_connections", "analysis_session_connections", "alerts",
-        "protocol_events", "connections", "analysis_sessions", "archive_batches", "sensor_cursors"]
+        "protocol_events", "connections", "analysis_sessions", "archive_batches", "sensor_cursors", "sensor_file_problems"]
     assert not {"users", "revoked_tokens", "system_resets"}.intersection(deletes)
     db.execute.reset_mock()
     db.execute.return_value.rowcount = 0

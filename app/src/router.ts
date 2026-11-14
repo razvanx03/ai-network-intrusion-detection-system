@@ -9,6 +9,7 @@ export type Path =
   | `/archive-batches/:id`
   | `/connections`
   | `/dashboard`
+  | `/import-problems`
   | `/login`
 
 export type Params = {

@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { LoadingOrb } from "@/components/ui/loading-orb";
 import AppLayout from "@/layouts/AppLayout";
 
-const PROTECTED_PATHS = ["/dashboard", "/connections", "/all-data"];
+const PROTECTED_PATHS = ["/dashboard", "/connections", "/all-data", "/import-problems"];
 
 export const ProtectedRoute: React.FC = () => {
   const location = useLocation();

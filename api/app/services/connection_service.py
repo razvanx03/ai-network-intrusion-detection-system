@@ -33,8 +33,11 @@ class ConnectionService:
         return self.conn_repo.count_total()
 
     def with_context(self, connections):
-        available = ProtocolEventRepository(self.db).available([c.uid for c in connections])
+        repo = ProtocolEventRepository(self.db)
+        available = repo.available([c.uid for c in connections])
+        names = repo.server_names([c.uid for c in connections])
         return [ConnectionResponse.model_validate(c).model_copy(update={
+            "server_name": names.get(c.uid),
             "available_logs": ["conn", *sorted(available.get(c.uid, []))],
         }) for c in connections]
 

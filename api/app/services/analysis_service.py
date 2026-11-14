@@ -63,7 +63,8 @@ class AnalysisService:
             phase = "sensor_unavailable"
             async for batch in self.ingestion.batches():
                 if batch.issue is not None:
-                    self.sessions.record_file_issue(session_id, batch.issue)
+                    if self.ingestion.note_issue(batch.issue, session_id):
+                        self.sessions.record_file_issue(session_id, batch.issue)
                     self.db.commit()
                     continue
                 phase = "invalid_records"

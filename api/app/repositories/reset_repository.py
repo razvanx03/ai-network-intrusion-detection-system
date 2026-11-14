@@ -7,6 +7,7 @@ from app.models.alert import Alert
 from app.models.connection import Connection
 from app.models.protocol_event import ProtocolEvent
 from app.models.sensor_cursor import SensorCursor
+from app.models.sensor_file_problem import SensorFileProblem
 
 
 class ResetBusyError(RuntimeError):
@@ -41,5 +42,5 @@ class ResetRepository:
         if not changed.rowcount:
             return
         for model in (ArchiveRecord, AlertConnection, AnalysisSessionConnection, Alert,
-                      ProtocolEvent, Connection, AnalysisSession, ArchiveBatch, SensorCursor):
+                      ProtocolEvent, Connection, AnalysisSession, ArchiveBatch, SensorCursor, SensorFileProblem):
             self.db.execute(delete(model))

@@ -71,6 +71,7 @@ class ConnectionResponse(BaseModel):
     resp_pkts: Optional[int] = 0
     history: Optional[str] = None
     created_at: datetime
+    server_name: str | None = None
     available_logs: list[str] = Field(default_factory=lambda: ["conn"])
 
     class Config:

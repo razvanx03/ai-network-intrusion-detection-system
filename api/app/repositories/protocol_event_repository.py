@@ -20,6 +20,17 @@ class ProtocolEventRepository:
             result.setdefault(uid, []).append(kind)
         return result
 
+    def server_names(self, uids: list[str]) -> dict[str, str]:
+        if not uids:
+            return {}
+        name = ProtocolEvent.fields["server_name"].as_string()
+        ranked = select(ProtocolEvent.uid, name.label("name"), func.row_number().over(
+            partition_by=ProtocolEvent.uid, order_by=(ProtocolEvent.ts.desc(), ProtocolEvent.id.desc())
+        ).label("rank")).where(ProtocolEvent.uid.in_(uids), ProtocolEvent.log_type == "ssl",
+                               func.trim(name).not_in(["", "-"])).subquery()
+        return {uid: value.strip() for uid, value in self.db.execute(
+            select(ranked.c.uid, ranked.c.name).where(ranked.c.rank == 1))}
+
     def page(self, uid: str, kind: str, limit: int, offset: int):
         condition = (ProtocolEvent.uid == uid, ProtocolEvent.log_type == kind)
         total = self.db.scalar(select(func.count()).select_from(ProtocolEvent).where(*condition)) or 0

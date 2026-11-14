@@ -15,7 +15,7 @@ def sensor():
 @pytest.fixture
 def file():
     return SensorFile(file="2026-01-01/conn.10-11.log.gz", file_id="a" * 64,
-                      archived=True, first_ts=1700000000)
+                      archived=True, first_ts=1700000000, fingerprint="f" * 64)
 
 
 def test_health_probe_is_authenticated_bounded_and_does_not_fetch_logs(sensor, mock_http):
@@ -31,7 +31,7 @@ def test_health_probe_is_authenticated_bounded_and_does_not_fetch_logs(sensor, m
 def test_file_discovery_sends_api_key_and_validates_metadata(sensor, file, mock_http):
     requests = mock_http(lambda request: httpx.Response(200, json={"files": [file.model_dump()]}))
     assert asyncio.run(sensor.list_files()) == [file]
-    assert requests[0].url.path == "/files"
+    assert requests[0].url.path == "/files/discover"
     assert requests[0].headers["X-API-Key"] == "unit-only-sensor-key"
 
 
@@ -75,7 +75,7 @@ def test_read_file_sends_identity_and_offset(sensor, file, mock_http):
     result = asyncio.run(sensor.read_file(file, 100))
     assert result.next_offset == 200
     assert dict(requests[0].url.params) == {
-        "file": file.file, "file_id": file.file_id, "offset": "100", "limit": "500"}
+        "file": file.file, "file_id": file.file_id, "offset": "100", "limit": "500", "fingerprint": "f" * 64}
     assert requests[0].headers["X-API-Key"] == sensor.api_key
 
 

@@ -1,3 +1,4 @@
+import { ServerNameHeading } from "@/components/server-name-heading";
 import { Badge } from "@/components/ui/badge";
 import { TableCell, TableHead } from "@/components/ui/table";
 import { InfoTooltip } from "@/components/info-tooltip";
@@ -6,13 +7,14 @@ import { logKeys } from "@/lib/display";
 import { useI18n } from "@/i18n";
 import type { Alert, Connection } from "@/services/types";
 
-export const trafficTableClassName = "min-w-[72rem] [&_th]:px-2 [&_td]:px-2";
+export const trafficTableClassName = "min-w-[84rem] [&_th]:px-2 [&_td]:px-2";
 
 export function TrafficHeaders() {
   const { t } = useI18n();
   return <>
     <TableHead>{t("context_included")}</TableHead><TableHead>{t("th_protocol")}</TableHead>
     <TableHead>{t("th_source")}</TableHead><TableHead>{t("th_destination")}</TableHead>
+    <TableHead><ServerNameHeading /></TableHead>
     <TableHead>{t("th_service")}</TableHead><TableHead>{t("th_conn_state")}</TableHead>
     <TableHead>{t("th_duration")}</TableHead><TableHead>{t("th_bytes")}</TableHead>
     <TableHead><PacketsHeading /></TableHead>
@@ -30,6 +32,7 @@ export function TrafficCells({ connection, fallback }: { connection: Connection 
     <TableCell className="uppercase text-primary">{connection?.proto ?? fallback?.proto ?? "—"}</TableCell>
     <TableCell className="font-mono text-xs">{connection ? `${connection.src_ip}:${connection.src_port}` : fallback?.src_ip ?? "—"}</TableCell>
     <TableCell className="font-mono text-xs">{connection ? `${connection.dst_ip}:${connection.dst_port}` : fallback ? `${fallback.dst_ip}${fallback.dst_port == null ? "" : `:${fallback.dst_port}`}` : "—"}</TableCell>
+    <TableCell className="max-w-64 break-all text-xs">{connection?.server_name ?? "—"}</TableCell>
     <TableCell>{connection?.service ?? "—"}</TableCell>
     <TableCell><div className="flex items-center gap-1"><Badge variant="outline">{state ?? "—"}</Badge>
       {stateText && <InfoTooltip label={`${t("th_conn_state")}: ${state}`} text={stateText} />}

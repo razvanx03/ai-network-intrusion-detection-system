@@ -119,7 +119,7 @@ export default function DashboardPage() {
             stats={resource.data.stats}
             overview={resource.data.overview}
           />
-          <AnalysisSessions refreshVersion={historyVersion} inspect={setSelectedFinding} />
+          <AnalysisSessions refreshVersion={historyVersion} />
           <Suspense fallback={<LoadingOrb text={t("loading")} />}>
             <Charts protocols={resource.data.overview.protocols} />
           </Suspense>

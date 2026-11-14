@@ -40,9 +40,12 @@ class ArchiveSnapshotRepository:
         def connection_rows():
             # Bounded serialization/context queries even for large traffic batches.
             for chunk in self.db.scalars(connections.order_by(Connection.id).execution_options(yield_per=250)).partitions(250):
-                available = ProtocolEventRepository(self.db).available([c.uid for c in chunk])
+                context = ProtocolEventRepository(self.db)
+                available = context.available([c.uid for c in chunk])
+                names = context.server_names([c.uid for c in chunk])
                 for connection in chunk:
                     item = ConnectionResponse.model_validate(connection).model_copy(update={
+                        "server_name": names.get(connection.uid),
                         "available_logs": ["conn", *sorted(available.get(connection.uid, []))]})
                     yield dict(record_id=str(item.id), payload=item.model_dump(mode="json"),
                                protocol=item.proto.lower(), flagged=item.id in flagged,
@@ -108,4 +111,19 @@ class ArchiveSnapshotRepository:
             time = ArchiveRecord.payload["started_at" if kind == "session" else "timestamp"].as_string()
         order = time.asc() if kind == "event" else time.desc()
         items = self.db.scalars(select(ArchiveRecord).where(*conditions).order_by(order, ArchiveRecord.record_id).limit(limit).offset(offset)).all()
-        return dict(items=[item.payload for item in items], total=total, limit=limit, offset=offset)
+        payloads = [dict(item.payload) for item in items]
+        missing_names = [p for p in payloads if "server_name" not in p]
+        if kind == "connection" and missing_names:
+            # Older snapshots already retain TLS events; derive only from that frozen copy.
+            events = self.db.scalars(select(ArchiveRecord).where(
+                ArchiveRecord.batch_id == batch_id, ArchiveRecord.kind == "event",
+                ArchiveRecord.protocol == "ssl", ArchiveRecord.parent_id.in_([p["uid"] for p in missing_names])
+            ).order_by(ArchiveRecord.payload["ts"].as_float().desc(), ArchiveRecord.record_id.desc()))
+            names = {}
+            for event in events:
+                name = event.payload.get("fields", {}).get("server_name")
+                if isinstance(name, str) and name.strip() not in ("", "-"):
+                    names.setdefault(event.parent_id, name.strip())
+            for payload in missing_names:
+                payload["server_name"] = names.get(payload["uid"])
+        return dict(items=payloads, total=total, limit=limit, offset=offset)

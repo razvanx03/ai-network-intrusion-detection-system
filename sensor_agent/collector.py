@@ -10,7 +10,7 @@ import os
 import socket
 import zlib
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Annotated, Any, BinaryIO
 
 import uvicorn
 from dotenv import dotenv_values
@@ -53,7 +53,7 @@ if not 1024 <= MAX_BYTES <= 16 * 1024 * 1024:
 if not 1024 <= MAX_LINE_BYTES <= MAX_BYTES:
     raise RuntimeError("MAX_LINE_BYTES must be between 1 KiB and MAX_BATCH_BYTES.")
 
-app = FastAPI(title="Zeek Sensor Agent", version="2.5.0")
+app = FastAPI(title="Zeek Sensor Agent", version="2.6.0")
 RESET_SOCKET = Path("/run/nids-reset/control.sock")
 
 
@@ -188,8 +188,28 @@ def stream_identity(stream: BinaryIO, sealed: bool = False) -> tuple[str, float]
     return None
 
 
+class FileDiscoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    excluded_versions: list[Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]] = Field(default_factory=list, max_length=10000)
+
+
+def file_version(name: str, path: Path) -> str:
+    stat = path.stat()
+    identity = [name, stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns]
+    return hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+
+
 @app.get("/files", dependencies=[Depends(authenticate)])
 def list_files():
+    return discover_files()
+
+
+@app.post("/files/discover", dependencies=[Depends(authenticate)])
+def discover_versioned_files(request: FileDiscoveryRequest):
+    return discover_files(set(request.excluded_versions), versioned=True)
+
+
+def discover_files(excluded_versions=(), versioned=False):
     """Discover connection and UID-linked protocol streams, including archives."""
     candidates = []
     for kind in ("conn", "dns", "http", "ssl"):
@@ -205,13 +225,22 @@ def list_files():
             candidates.append((f"current/{kind}.log", current, False))
     files = {}
     issues = []
+    empty_files = []
     # A bad file must not hide healthy streams during discovery.
     for name, path, archived in sorted(candidates):
+        version = None
+        issue_count = len(issues)
         try:
             path = resolve_log_file(name)
+            if versioned:
+                version = file_version(name, path)
+                if archived and version in excluded_versions:
+                    continue
             with open_log(path) as stream:
                 identity = stream_identity(stream, sealed=archived)
             if identity is None:
+                if versioned and archived:
+                    empty_files.append({"file": name, "fingerprint": version})
                 continue
             file_id, first_ts = identity
             kind = path.name.split(".", 1)[0]
@@ -222,6 +251,8 @@ def list_files():
                     "file": name, "file_id": file_id, "archived": archived, "log_type": kind,
                     "first_ts": first_ts,
                 }
+                if versioned:
+                    files[file_id]["fingerprint"] = version
         except HTTPException as exc:
             if exc.status_code not in (404, 413, 422):
                 raise
@@ -231,8 +262,12 @@ def list_files():
             issues.append({"file": name, "code": "corrupt_file"})
         except OSError:
             issues.append({"file": name, "code": "unreadable_file"})
-    return {"files": sorted(files.values(), key=lambda item: (item["first_ts"], item["file"])),
-            "issues": issues}
+        if versioned and len(issues) > issue_count:
+            issues[-1].update({"archived": archived, "fingerprint": version})
+    result = {"files": sorted(files.values(), key=lambda item: (item["first_ts"], item["file"])), "issues": issues}
+    if versioned:
+        result["empty_files"] = empty_files
+    return result
 
 
 @app.get("/health", dependencies=[Depends(authenticate)])
@@ -246,6 +281,7 @@ def read_logs(
     offset: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=1000),
     file_id: str | None = Query(None, min_length=64, max_length=64),
+    fingerprint: Annotated[str | None, Query(pattern=r"^[a-f0-9]{64}$")] = None,
 ):
     """Read a batch of JSON Zeek records; the backend owns cursor persistence."""
     if limit > MAX_RECORDS:
@@ -255,6 +291,8 @@ def read_logs(
         )
 
     path = resolve_log_file(file)
+    if fingerprint is not None and file_version(file, path) != fingerprint:
+        raise HTTPException(status_code=409, detail="Log changed; refresh the file list.")
     records: list[dict[str, Any]] = []
     response_bytes = 0
     has_more = False

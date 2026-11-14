@@ -2,6 +2,8 @@ import type { TranslationKey } from "@/i18n";
 import { ApiError } from "./api";
 export function errorKey(error: unknown): TranslationKey {
   if (error instanceof ApiError) {
+    if (error.code === "import_problem_missing") return "import_problem_missing";
+    if (error.code === "import_problem_not_blocked") return "import_problem_not_blocked";
     if (error.code === "reset_not_supported") return "reset_not_supported";
     if (error.code === "reset_sensor_failed") return "reset_sensor_failed";
     if (error.code === "reset_pending") return "reset_resume";

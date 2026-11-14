@@ -16,6 +16,7 @@ import type {
   ContextType,
   ProtocolEvent,
   SensorStatus,
+  SensorFileProblem,
 } from "./types";
 export class ApiError extends Error {
   readonly status: number;
@@ -89,6 +90,8 @@ function query(params: Record<string, string | string[] | number | boolean | und
   return `?${result}`;
 }
 export const api = {
+  getImportProblems: (offset: number, limit: number, signal?: AbortSignal) => request<Page<SensorFileProblem>>(`/system/import-problems${query({ offset, limit })}`, { signal }),
+  retryImportProblem: (id: string) => request<{ status: "retry" }>(`/system/import-problems/${encodeURIComponent(id)}/retry`, { method: "POST" }),
   getResetStatus: (signal?: AbortSignal) => request<{ pending: boolean; operation_id: string | null }>("/system/reset-status", { signal }),
   resetData: (operationId: string) => request<{ status: "completed" }>("/system/reset-data", {
     method: "POST", body: JSON.stringify({ operation_id: operationId, confirmation: "RESET" }),
@@ -120,8 +123,6 @@ export const api = {
     request<AnalysisSession>(`/analysis-sessions/${encodeURIComponent(id)}${query({ include_archived: includeArchived })}`, { signal }),
   getAnalysisConnections: (id: string, offset: number, signal?: AbortSignal, includeArchived = false, limit = 20) =>
     request<Page<AnalysisConnection>>(`/analysis-sessions/${encodeURIComponent(id)}/connections${query({ limit, offset, include_archived: includeArchived })}`, { signal }),
-  getAnalysisAlerts: (id: string, offset: number, signal?: AbortSignal, includeArchived = false) =>
-    request<Page<Alert>>(`/analysis-sessions/${encodeURIComponent(id)}/alerts${query({ limit: 5, offset, include_archived: includeArchived })}`, { signal }),
   getAlertConnections: (session: string, id: number, signal?: AbortSignal, includeArchived = false) =>
     request<Connection[]>(`/analysis-sessions/${encodeURIComponent(session)}/alerts/${id}/connections${query({ include_archived: includeArchived })}`, { signal }),
   archiveDatabase: () => request<ArchiveBatch>("/archives", { method: "POST" }),

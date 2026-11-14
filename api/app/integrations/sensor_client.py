@@ -21,6 +21,7 @@ class SensorFile(BaseModel):
     file_id: str = Field(min_length=64, max_length=64)
     archived: bool
     first_ts: float
+    fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class SensorFileError(ValueError):
@@ -32,6 +33,12 @@ class SensorFileError(ValueError):
 class SensorFileList(BaseModel):
     files: list[SensorFile]
     issues: list[SensorFileIssue] = Field(default_factory=list)
+    empty_files: list["EmptySensorFile"] = Field(default_factory=list)
+
+
+class EmptySensorFile(BaseModel):
+    file: str
+    fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class SensorFileBatch(BaseModel):
@@ -110,9 +117,12 @@ class SensorClient:
     async def host_status(self):
         return await probe_host(self.base_url)
 
-    async def discover_files(self) -> SensorFileList:
+    async def discover_files(self, excluded_versions: list[str] | None = None) -> SensorFileList:
+        if excluded_versions is not None and len(excluded_versions) > 10000:
+            raise RuntimeError("Too many blocked sensor versions for one discovery request.")
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(f"{self.base_url}/files", headers={"X-API-Key": self.api_key})
+            response = await client.post(f"{self.base_url}/files/discover", headers={"X-API-Key": self.api_key},
+                                         json={"excluded_versions": excluded_versions or []})
             response.raise_for_status()
             return SensorFileList.model_validate(response.json())
 
@@ -120,7 +130,8 @@ class SensorClient:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.get(
                 f"{self.base_url}/logs", headers={"X-API-Key": self.api_key},
-                params={"file": file.file, "file_id": file.file_id, "offset": offset, "limit": 500},
+                params={"file": file.file, "file_id": file.file_id, "offset": offset, "limit": 500,
+                        **({"fingerprint": file.fingerprint} if file.archived else {})},
             )
             if response.status_code == 422:
                 body = response.json()
@@ -130,6 +141,7 @@ class SensorClient:
                 ):
                     raise SensorFileError(SensorFileIssue(
                         file=file.file, code=detail["code"], offset=offset,
+                        archived=file.archived, fingerprint=file.fingerprint,
                     ))
             response.raise_for_status()
             batch = SensorFileBatch.model_validate(response.json())

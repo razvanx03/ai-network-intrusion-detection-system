@@ -77,9 +77,42 @@ def test_deleted_connection_details_return_404(db):
 def test_connection_list_includes_available_context_without_changing_record(db, connection_factory, monkeypatch):
     repo = MagicMock()
     repo.available.return_value = {"Cunit1": ["ssl", "dns"]}
+    repo.server_names.return_value = {"Cunit1": "example.test"}
     monkeypatch.setattr("app.services.connection_service.ProtocolEventRepository", lambda _: repo)
     connection = connection_factory(created_at=datetime.now(timezone.utc))
     response = ConnectionService(db).with_context([connection])[0]
     assert response.available_logs == ["conn", "dns", "ssl"]
+    assert response.server_name == "example.test"
     assert response.uid == connection.uid
     assert not hasattr(connection, "available_logs")
+
+
+def test_server_names_query_is_batched_and_selects_latest_nonempty_tls_name(db):
+    db.execute.return_value = [("Cunit1", " example.test ")]
+    assert ProtocolEventRepository(db).server_names(["Cunit1", "Cunit2"]) == {"Cunit1": "example.test"}
+    statement = db.execute.call_args.args[0]
+    sql = str(statement)
+    assert "row_number() OVER (PARTITION BY protocol_events.uid ORDER BY protocol_events.ts DESC" in sql
+    assert ["Cunit1", "Cunit2"] in statement.compile().params.values()
+    assert "ssl" in statement.compile().params.values()
+    db.execute.reset_mock()
+    assert ProtocolEventRepository(db).server_names([]) == {}
+    db.execute.assert_not_called()
+
+
+def test_session_connection_page_enriches_context_without_losing_import_link(db, connection_factory, monkeypatch):
+    from types import SimpleNamespace
+    from app.routes.analysis_routes import session_connections
+    connection = connection_factory(created_at=datetime.now(timezone.utc))
+    repo = MagicMock()
+    repo.get.return_value = SimpleNamespace(archive_batch_id=None)
+    repo.connection_page.return_value = ([(connection, SimpleNamespace(file_id="stream", file="conn.log"))], 1)
+    monkeypatch.setattr("app.routes.analysis_routes.AnalysisRepository", lambda _: repo)
+    context = MagicMock()
+    context.available.return_value = {connection.uid: ["ssl"]}
+    context.server_names.return_value = {connection.uid: "example.test"}
+    monkeypatch.setattr("app.services.connection_service.ProtocolEventRepository", lambda _: context)
+    page = session_connections("session", limit=20, offset=0, include_archived=False, db=db)
+    assert page["items"][0]["connection"].server_name == "example.test"
+    assert page["items"][0]["connection"].available_logs == ["conn", "ssl"]
+    assert page["items"][0]["file"] == "conn.log"

@@ -333,8 +333,9 @@ automatically after its successful periodic availability probe; no separate serv
   access to historical records without a separate demo-history selector.
 - `GET /api/analysis-sessions?limit=20&offset=0` lists history; `GET /{id}` retrieves
   status, counters, detector/preparation metadata and safe error codes.
-- `GET /api/analysis-sessions/{id}/connections` and `/alerts` return paginated
-  source records and findings. `/alerts/{alert_id}/connections` returns exact evidence,
+- `GET /api/analysis-sessions/{id}/connections` returns paginated source records.
+  Session details show these records and alert totals; findings remain in the shared
+  suspicious-connections table. `/alerts/{alert_id}/connections` returns exact evidence,
   including multiple connections for a future aggregate finding.
 - All endpoints require the existing admin cookie. Failures return a safe code and
   session ID; credentials and remote response bodies are never sent to the frontend.
@@ -385,3 +386,14 @@ Existing integration files updated:
 - `app/src/services/api.ts`, `app/src/services/types.ts`, `app/src/i18n.tsx`: typed API integration and RO/EN text.
 - `api/requirements.txt`: pinned CPU inference dependencies matching the recorded training environment. Offline-only data dependencies are in `ai/requirements.txt`.
 - `README.md`: current architecture, lifecycle, API and file map.
+
+Import problem history (`/import-problems`, linked from Settings and session cards)
+keeps permanent archived-file failures separately from successful read checkpoints.
+Only the first detecting analysis reports an unchanged blocked version. Changed
+archives and explicit Retry permit another read; current files and temporary access
+errors keep retrying normally. History is paginated and retains status, timestamps,
+offset and attempt count. Retries replay with existing UID/event deduplication.
+Authenticated GET /api/system/import-problems lists the current sensor history;
+POST /api/system/import-problems/{id}/retry queues a known blocked version and
+refuses concurrent analysis/reset. Full data reset clears this history as well.
+This requires the matching collector 2.6 POST /files/discover versioned protocol.

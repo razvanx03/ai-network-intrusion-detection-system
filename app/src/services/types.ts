@@ -30,6 +30,7 @@ export interface Alert {
 }
 export interface Connection {
   archive_batch_id: string | null;
+  server_name: string | null;
   available_logs: ("conn" | "dns" | "http" | "ssl")[];
   id: number;
   uid: string;
@@ -93,6 +94,18 @@ export interface SensorFileIssue {
   file: string;
   code: "corrupt_file" | "unreadable_file" | "oversized_file" | "file_unavailable";
   offset: number | null;
+}
+export interface SensorFileProblem {
+  id: string;
+  file: string;
+  code: "corrupt_file" | "oversized_file";
+  offset: number | null;
+  status: "blocked" | "retry" | "resolved" | "outdated";
+  attempts: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  first_session_id: string;
+  last_session_id: string;
 }
 export interface AnalysisSession {
   archive_batch_id: string | null;

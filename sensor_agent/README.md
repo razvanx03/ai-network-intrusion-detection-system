@@ -233,3 +233,21 @@ A timeout is an uncertain outcome, not proof that the VM did nothing: the guard
 remains and the same operation must be resumed. The local and remote systems do
 not support atomic rollback of permanent deletion. Neither VM installation nor
 a live destructive reset is performed by unit checks.
+
+## Blocked archive history
+
+Collector 2.6 and the matching backend support authenticated POST /files/discover
+with an excluded_versions JSON list. Version tokens fingerprint relative path and
+stat device/inode/size/mtime/ctime metadata. Matching archived versions are skipped
+before content reads. Modified versions are eligible again. GET /files remains the
+legacy diagnostic listing. Archived /logs reads accept a fingerprint guard against
+changes since discovery; current streams remain appendable.
+
+The first permanent invalid/oversized archive failure is recorded in that analysis
+and a separate problem history. Later analyses skip the unchanged blocked archive.
+Current files and temporary access errors remain retryable. Import problem history
+in Settings and session cards is paginated and has Retry. Successful reads resolve
+the problem; failed explicit retries update the same row. Existing records/events
+are deduplicated on replay. The source archives are never modified. Metadata-only
+changes can also trigger a retry. Deploy matching collector and backend versions;
+there is no silent legacy-protocol fallback.

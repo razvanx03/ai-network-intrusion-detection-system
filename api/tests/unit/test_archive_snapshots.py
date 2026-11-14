@@ -55,6 +55,7 @@ def test_snapshot_copies_status_context_and_membership_without_live_foreign_keys
     db.execute.side_effect = execute
     with patch("app.repositories.archive_snapshot_repository.ProtocolEventRepository") as context:
         context.return_value.available.return_value = {connection.uid: ["dns"]}
+        context.return_value.server_names.return_value = {connection.uid: "archived.test"}
         ArchiveSnapshotRepository(db).capture(batch)
     alert.status = "RESOLVED"
     connection.duration = 99
@@ -63,6 +64,7 @@ def test_snapshot_copies_status_context_and_membership_without_live_foreign_keys
     assert copied["alert", "3"]["payload"]["status"] == "ACKNOWLEDGED"
     assert copied["connection", "1"]["payload"]["duration"] != 99
     assert copied["connection", "1"]["payload"]["available_logs"] == ["conn", "dns"]
+    assert copied["connection", "1"]["payload"]["server_name"] == "archived.test"
     assert copied["connection", "1"]["flagged"] is True
     assert copied["connection", "2"]["member"] is False
     assert copied["event", "event"]["payload"]["fields"] == {"query": "example.test"}
@@ -140,3 +142,18 @@ def test_snapshot_reads_are_admin_authenticated_and_never_write_routes():
         assert any(dependency.call is get_current_user for dependency in route.dependant.dependencies)
         if "/connections" in route.path or "/sessions" in route.path or "/protocols" in route.path:
             assert route.methods == {"GET"}
+
+
+def test_old_snapshot_server_name_uses_only_frozen_events_and_preserves_payload(db):
+    record = SimpleNamespace(payload={"uid": "Cunit", "id": 1})
+    events = [SimpleNamespace(parent_id="Cunit", payload={"fields": {"server_name": name}})
+              for name in ("", "-", "original.test", "older.test")]
+    first = MagicMock()
+    first.all.return_value = [record]
+    db.scalars.side_effect = [first, events]
+    page = ArchiveSnapshotRepository(db).page("original-lot", "connection", 20, 0)
+    assert page["items"][0]["server_name"] == "original.test"
+    assert "server_name" not in record.payload
+    query = db.scalars.call_args.args[0]
+    assert "original-lot" in query.compile().params.values()
+    assert query.get_final_froms() == [ArchiveRecord.__table__]

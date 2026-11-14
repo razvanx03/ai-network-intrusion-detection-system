@@ -38,6 +38,38 @@ def archive(collector, name, content):
     return path
 
 
+def test_blocked_unchanged_archive_is_skipped_before_any_content_read(collector, raw_record, monkeypatch):
+    archive(collector, "conn.blocked.log.gz", json.dumps(raw_record).encode() + b"\n" + b"\0" * 20)
+    request = collector.FileDiscoveryRequest()
+    first = collector.discover_versioned_files(request)["files"][0]
+    def forbidden(_):
+        raise AssertionError("Unchanged blocked archive must not be opened.")
+    monkeypatch.setattr(collector, "open_log", forbidden)
+    result = collector.discover_versioned_files(collector.FileDiscoveryRequest(excluded_versions=[first["fingerprint"]]))
+    assert result == {"files": [], "issues": [], "empty_files": []}
+
+
+def test_changed_archive_is_discovered_again_and_version_guard_rejects_stale_read(collector, raw_record):
+    path = archive(collector, "conn.changed.log.gz", json.dumps(raw_record).encode() + b"\n")
+    first = collector.discover_versioned_files(collector.FileDiscoveryRequest())["files"][0]
+    path.write_bytes(gzip.compress(json.dumps({**raw_record, "duration": 99}).encode()+b"\n"))
+    second = collector.discover_versioned_files(collector.FileDiscoveryRequest(excluded_versions=[first["fingerprint"]]))["files"][0]
+    assert first["fingerprint"] != second["fingerprint"]
+    with pytest.raises(HTTPException) as error:
+        collector.read_logs(file=first["file"], offset=0, limit=500, file_id=first["file_id"], fingerprint=first["fingerprint"])
+    assert error.value.status_code == 409
+
+
+def test_discovery_failure_has_version_and_empty_repaired_archive_is_explicit(collector):
+    path = archive(collector, "conn.bad.log.gz", b"not-json\n")
+    result = collector.discover_versioned_files(collector.FileDiscoveryRequest())
+    issue = result["issues"][0]
+    assert issue["archived"] and len(issue["fingerprint"]) == 64
+    path.write_bytes(gzip.compress(b""))
+    result = collector.discover_versioned_files(collector.FileDiscoveryRequest(excluded_versions=[issue["fingerprint"]]))
+    assert not result["issues"] and result["empty_files"][0]["file"] == issue["file"]
+
+
 def test_management_routes_require_agent_key_and_exact_confirmation(collector):
     from pydantic import ValidationError
     for route in collector.app.routes:

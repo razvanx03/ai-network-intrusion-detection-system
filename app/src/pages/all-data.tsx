@@ -114,7 +114,7 @@ export default function AllDataPage() {
     </div>
     <div className="min-h-[calc(100dvh-8rem)]">
       {view === "traffic" && <ConnectionBrowser includeArchived archivedOnly={archivedOnly} alertsOnly={alertsOnly} selectedProtocols={protocols} hideProtocolFilter refreshVersion={version} />}
-      {view === "sessions" && <AnalysisSessions includeArchived archivedOnly={archivedOnly} alertsOnly={alertsOnly} hideTitle refreshVersion={version} inspect={setSelected} />}
+      {view === "sessions" && <AnalysisSessions includeArchived archivedOnly={archivedOnly} alertsOnly={alertsOnly} hideTitle refreshVersion={version} />}
     </div>
     {selected && <FindingDetails key={selected.id} alert={selected} includeArchived close={() => setSelected(null)} />}
   </div>;
