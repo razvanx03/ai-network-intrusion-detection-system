@@ -9,44 +9,29 @@ import { Pagination } from "@/components/pagination";
 import { DataState } from "@/components/data-state";
 import { SessionSelector } from "@/components/dashboard/session-selector";
 import { useResource } from "@/hooks/use-resource";
-import { useI18n, type TranslationKey } from "@/i18n";
+import { useI18n } from "@/i18n";
 import { api } from "@/services/api";
+import { issueLabels, errorLabels } from "@/lib/analysis-labels";
 import { attackKeys } from "@/lib/display";
-import type { Alert, SensorFileIssue } from "@/services/types";
+import type { Alert } from "@/services/types";
 
-const issueLabels: Record<SensorFileIssue["code"], TranslationKey> = {
-  corrupt_file: "analysis_file_corrupt",
-  unreadable_file: "analysis_file_unreadable",
-  oversized_file: "analysis_file_oversized",
-  file_unavailable: "analysis_file_unavailable",
-};
-
-const errorLabels: Record<string, TranslationKey> = {
-  invalid_records: "analysis_error_records",
-  sensor_unavailable: "analysis_error_sensor",
-  cursor_conflict: "analysis_error_conflict",
-  detector_failed: "analysis_error_detector",
-  processing_failed: "analysis_error_processing",
-  server_restarted: "analysis_error_restart",
-  request_interrupted: "analysis_error_interrupted",
-};
-
-export function AnalysisSessions({ inspect, refreshVersion = 0, includeArchived = false, archivedOnly = false }: { inspect: (alert: Alert) => void; refreshVersion?: number; includeArchived?: boolean; archivedOnly?: boolean }) {
+export function AnalysisSessions({ inspect, refreshVersion = 0, includeArchived = false, archivedOnly = false, alertsOnly = false, hideTitle = false }: { inspect: (alert: Alert) => void; refreshVersion?: number; includeArchived?: boolean; archivedOnly?: boolean; alertsOnly?: boolean; hideTitle?: boolean }) {
   const { t, language } = useI18n();
   const [selected, setSelected] = useState<string | null>(null);
   const [recordOffset, setRecordOffset] = useState(0);
   const [recordLimit, setRecordLimit] = useState(20);
   const [alertOffset, setAlertOffset] = useState(0);
   const [expanded, setExpanded] = useState(false);
-  const [previousArchivedOnly, setPreviousArchivedOnly] = useState(archivedOnly);
-  if (previousArchivedOnly !== archivedOnly) {
-    setPreviousArchivedOnly(archivedOnly);
+  const scope = `${archivedOnly}:${alertsOnly}`;
+  const [previousScope, setPreviousScope] = useState(scope);
+  if (previousScope !== scope) {
+    setPreviousScope(scope);
     setSelected(null);
     setRecordOffset(0);
     setAlertOffset(0);
   }
   const load = useCallback(async (signal: AbortSignal) => {
-    const history = await api.getAnalysisSessions(signal, includeArchived, archivedOnly);
+    const history = await api.getAnalysisSessions(signal, includeArchived, archivedOnly, alertsOnly);
     const session = selected && history.items.some(item => item.id === selected)
       ? await api.getAnalysisSession(selected, signal, includeArchived)
       : history.items[0] ?? null;
@@ -55,8 +40,8 @@ export function AnalysisSessions({ inspect, refreshVersion = 0, includeArchived 
       api.getAnalysisAlerts(session.id, alertOffset, signal, includeArchived),
     ]) : null;
     return { history, session, details, query: { selected, recordOffset, recordLimit, alertOffset, refreshVersion } };
-  }, [selected, recordOffset, recordLimit, alertOffset, expanded, refreshVersion, includeArchived, archivedOnly]);
-  const cacheKey = `sessions:${includeArchived}:${archivedOnly}:${selected}:${recordOffset}:${recordLimit}:${alertOffset}:${expanded}`;
+  }, [selected, recordOffset, recordLimit, alertOffset, expanded, refreshVersion, includeArchived, archivedOnly, alertsOnly]);
+  const cacheKey = `sessions:${includeArchived}:${archivedOnly}:${alertsOnly}:${selected}:${recordOffset}:${recordLimit}:${alertOffset}:${expanded}`;
   const resource = useResource(load, true, refreshVersion, cacheKey);
   const data = resource.data;
   const sessionLoading = resource.loading && (!data || data.query.selected !== selected || data.query.refreshVersion !== refreshVersion);
@@ -64,8 +49,8 @@ export function AnalysisSessions({ inspect, refreshVersion = 0, includeArchived 
   const alertsLoading = resource.loading && (sessionLoading || !data?.details || data.query.alertOffset !== alertOffset);
   return (
     <Card>
-      <CardHeader><CardTitle>{t("analysis_sessions")}</CardTitle></CardHeader>
-      <CardContent className="space-y-4">
+      {!hideTitle && <CardHeader><CardTitle>{t("analysis_sessions")}</CardTitle></CardHeader>}
+      <CardContent className={`space-y-4 ${hideTitle ? "pt-6" : ""}`}>
         <DataState loading={resource.loading && !data} error={resource.error} hasData={!!data} retry={() => { void resource.refresh(); }} />
         {data && !data.history.items.length && <p className="text-sm text-muted-foreground">{t("analysis_no_sessions")}</p>}
         {data && data.history.items.length > 0 && <>

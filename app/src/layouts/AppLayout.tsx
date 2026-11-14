@@ -42,7 +42,7 @@ function LayoutContent({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-30 border-b bg-card">
         <div className={`mx-auto w-full ${contentWidth} px-4 sm:px-6`}>
-          <div className="flex h-14 items-center justify-between gap-4">
+          <div className="flex min-h-14 flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2 sm:h-14 sm:flex-nowrap sm:py-0">
           <Link to="/dashboard" className="flex items-center gap-2 font-bold shrink-0">
             <ShieldAlert className="size-5 text-primary" />
             {t("hub_title")}
@@ -58,6 +58,7 @@ function LayoutContent({ children }: { children: ReactNode }) {
             <Button
               variant="ghost"
               size="icon"
+              className="size-8 sm:size-10"
               aria-label={t("logout")}
               disabled={loggingOut}
               onClick={() => {
@@ -106,7 +107,7 @@ function LayoutContent({ children }: { children: ReactNode }) {
                 {t("nav_connections")}
               </Link>
             </Button>
-            <Button asChild variant={location.pathname === "/all-data" ? "secondary" : "ghost"} size="sm">
+            <Button asChild variant={location.pathname === "/all-data" || location.pathname.startsWith("/archive-batches/") ? "secondary" : "ghost"} size="sm">
               <Link to="/all-data" aria-current={location.pathname === "/all-data" ? "page" : undefined}>
                 <Archive className="size-4" />{t("archive_nav")}
               </Link>

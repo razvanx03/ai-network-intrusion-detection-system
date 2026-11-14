@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { Modal } from "@/components/modal";
 import { PacketsHeading } from "@/components/packets-heading";
+import { ConnectionContext } from "@/components/connection-context";
 import { AlertStatusBadge } from "@/components/alert-status-badge";
 import { Table, TableHead, TableHeader, TableRow, TableBody, TableCell } from "@/components/ui/table";
 import { DataState } from "@/components/data-state";
@@ -43,6 +44,8 @@ export function FindingDetails({ alert, close, includeArchived = false }: { aler
           </TableRow>)}</TableBody>
         </Table> : <p className="text-sm text-muted-foreground">{t("analysis_no_records")}</p>)}
         </LoadingRegion>
+        {resource.data?.filter(connection => connection.available_logs.some(kind => kind !== "conn")).map(connection =>
+          <ConnectionContext key={connection.id} connection={connection} includeArchived={includeArchived} showSummary={(resource.data?.length ?? 0) > 1} />)}
       </>}
     </div>
   </Modal>;

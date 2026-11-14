@@ -4,7 +4,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy.orm import Session
 from app.models.alert import Alert
 from app.repositories.alert_repository import AlertRepository
-from app.schemas.alert import AlertFilter, AlertBulkStatusUpdate
+from app.schemas.alert import AlertFilter, AlertBulkStatusUpdate, AlertResponse
+from app.services.connection_service import ConnectionService
 
 
 class AlertService:
@@ -17,6 +18,7 @@ class AlertService:
             attack_type=filters.attack_type,
             status=filters.status,
             src_ip=filters.src_ip,
+            protocols=filters.protocols,
             limit=filters.limit,
             offset=filters.offset,
             provenance=filters.provenance,
@@ -26,6 +28,13 @@ class AlertService:
 
     def get_stats(self, provenance: str | None = None) -> Dict[str, Any]:
         return self.alert_repo.get_stats(provenance)
+
+    def serialize_alerts(self, alerts: list[Alert]) -> list[AlertResponse]:
+        sources = [alert.connection for alert in alerts if alert.connection is not None]
+        context = {record.id: record for record in ConnectionService(self.db).with_context(sources)}
+        return [AlertResponse.model_validate(alert).model_copy(update={
+            "connection": context.get(alert.connection_id),
+        }) for alert in alerts]
 
     def get_daily_counts(self, period_start: date, timezone_name: str, period: str = "week"):
         if not 1900 <= period_start.year < 9999:

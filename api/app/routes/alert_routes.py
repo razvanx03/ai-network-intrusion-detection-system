@@ -17,6 +17,7 @@ def get_alerts(
     attack_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None, description="NEW, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE"),
     src_ip: Optional[str] = Query(None),
+    protocols: list[str] | None = Query(None, max_length=64),
     provenance: Literal["analysis"] | None = Query(None),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -31,6 +32,7 @@ def get_alerts(
         attack_type=attack_type,
         status=status,
         src_ip=src_ip,
+        protocols=protocols or [],
         limit=limit,
         offset=offset,
         include_archived=include_archived,
@@ -38,7 +40,7 @@ def get_alerts(
     )
     items, total = service.get_alerts(filters)
     return {
-        "items": [AlertResponse.model_validate(a) for a in items],
+        "items": service.serialize_alerts(items),
         "total": total,
         "limit": limit,
         "offset": offset

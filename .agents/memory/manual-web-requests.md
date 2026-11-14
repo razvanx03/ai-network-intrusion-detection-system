@@ -1,5 +1,12 @@
 # Manual web requests
 
+Global filter feedback, user clarification 2026-11-14: filter triggers must show
+when non-default filters apply, even with their popovers closed. Use FilterButton
+for switch groups (active count and primary tint) and the shared primary tint on
+ProtocolSelect for selected protocols. All protocols is the inactive default.
+Reserve the count slot so enabling filters never changes trigger dimensions.
+Disabled controls do not indicate active filters for a view they do not filter.
+
 Loading orb sizing, 2026-11-07: use the largest native thinking-orbs size (64 px)
 for page loading. Do not enlarge its canvas through CSS scaling; the user observed
 blurred rendering at 2x. Keep the page indicator centered with its text below.
@@ -73,11 +80,25 @@ were removed; sensor ingestion still uses the shared analysis service. Historica
 stored-session metadata remains readable. Traffic Details use the shared Modal,
 showing the Zeek UID and the existing DNS/HTTP/TLS context rather than expanding
 a table row. Live desktop/mobile checks covered TLS and DNS records.
-All-data has a shared Hide current data switch across traffic, findings and
-sessions. The archived_only API flag filters both rows and totals on the server,
+All-data has Traffic records and Analysis sessions views. Its Filters popover
+contains Alerts only and Hide current data switches. Alerts only means traffic
+with AI findings (deduplicated through linked/direct evidence), or sessions with
+new_alerts_detected > 0. The archived_only API flag filters rows and totals on the server,
 and overrides include_archived when true. Reset page offsets and selected session
 when changing that scope. Successful archive/restore operations clear resource
 caches so navigating between routes does not reuse pre-archive membership.
+On 2026-11-14 the separate AllAlerts table was removed. TrafficHeaders/TrafficCells
+now share traffic columns between the traffic browser and dashboard findings;
+the latter additionally keeps selection, classifier score and review status.
+Protocol options come from stored records, with multi-selection; All clears
+individual choices and choosing an individual protocol clears All. Protocols
+apply to traffic, not the session history. The all-data result region reserves
+viewport space to prevent empty results clamping scroll and moving controls.
+The dashboard findings table reuses ProtocolSelect for active findings. Its
+server-side protocol filter covers direct and linked evidence and filters both
+rows and totals. Changing protocols resets pagination and selected findings;
+overview metrics remain global. Live checks covered UDP with zero results,
+combined TCP/UDP, All, unchanged control positions and the mobile dropdown.
 
 After adding/removing frontend dependencies with Vite already running, verify the
 development page as well as the production build. On 2026-11-09 a blank root and

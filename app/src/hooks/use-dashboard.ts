@@ -5,6 +5,7 @@ import { useResource } from "./use-resource";
 export function useDashboard(
   offset: number,
   limit: number,
+  protocols: string[],
 ) {
   // Base dashboard data (stats, overview) is fetched independently of alerts pagination.
   const loadOverview = useCallback(
@@ -23,12 +24,12 @@ export function useDashboard(
   const loadAlerts = useCallback(
     (signal: AbortSignal) =>
       api.getAlerts(
-        { limit, offset, provenance: "analysis" },
+        { limit, offset, protocols, provenance: "analysis" },
         signal,
       ),
-    [limit, offset],
+    [limit, offset, protocols],
   );
-  const alertsCacheKey = `dashboard:alerts:analysis:${limit}:${offset}`;
+  const alertsCacheKey = `dashboard:alerts:analysis:${protocols.join(",")}:${limit}:${offset}`;
   const alertsResource = useResource(loadAlerts, true, 0, alertsCacheKey);
 
   const data = useMemo(() => {

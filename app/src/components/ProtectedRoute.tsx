@@ -12,7 +12,7 @@ export const ProtectedRoute: React.FC = () => {
   const location = useLocation();
   const { isAuthenticated, isLoading, error, refreshUser } = useAuth();
   const isLoginPage = location.pathname === "/login";
-  const isProtectedPath = PROTECTED_PATHS.includes(location.pathname);
+  const isProtectedPath = PROTECTED_PATHS.includes(location.pathname) || location.pathname.startsWith("/archive-batches/");
 
   // Redirect root / directly to /dashboard
   if (location.pathname === "/") {

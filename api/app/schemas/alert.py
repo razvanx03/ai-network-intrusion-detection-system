@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 from typing import Optional, List, Literal
 from pydantic import BaseModel, Field, StrictInt, field_validator
+from app.schemas.connection import ConnectionResponse
 
 
 class AlertResponse(BaseModel):
@@ -9,6 +10,7 @@ class AlertResponse(BaseModel):
     timestamp: datetime
     connection_id: Optional[int] = None
     proto: str | None = None
+    connection: ConnectionResponse | None = None
     analysis_session_id: Optional[str] = None
     provenance: str
     src_ip: str
@@ -55,6 +57,7 @@ class AlertFilter(BaseModel):
     attack_type: Optional[str] = None
     status: Optional[str] = None
     src_ip: Optional[str] = None
+    protocols: list[str] = Field(default_factory=list, max_length=64)
     limit: int = 50
     offset: int = 0
 

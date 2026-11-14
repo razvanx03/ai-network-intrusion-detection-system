@@ -13,6 +13,7 @@ present state of a VM. They are not executable controls.
 | [Graphical login investigation](.agents/memory/ubuntu-graphical-login.md) | Investigating a black screen on the Ubuntu VM |
 | [Model evaluation boundaries](.agents/memory/ai-evaluation.md) | Changing inference, evaluating datasets or reporting detection results |
 | [Manual web requests](.agents/memory/manual-web-requests.md) | Changing frontend loading, polling or session initialization |
+| [Archive history](.agents/memory/archive-history.md) | Changing archive membership, restoration or historical batch browsing |
 
 Update a focused note after a confirmed correction rather than appending a chat
 transcript. Keep evidence, dates for historical observations, and remaining limits

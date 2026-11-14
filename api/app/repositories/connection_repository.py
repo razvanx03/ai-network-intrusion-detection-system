@@ -1,5 +1,7 @@
 from typing import List, Optional, Tuple
 from sqlalchemy import select, func, desc
+from app.models.alert import Alert
+from app.models.analysis_session import AlertConnection
 from sqlalchemy.orm import Session
 from app.models.connection import Connection
 from app.repositories.base_repository import BaseRepository
@@ -42,12 +44,13 @@ class ConnectionRepository(BaseRepository[Connection]):
         self,
         src_ip: Optional[str] = None,
         dst_ip: Optional[str] = None,
-        proto: Optional[str] = None,
         conn_state: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
         include_archived: bool = False,
         archived_only: bool = False,
+        protocols: list[str] | None = None,
+        alerts_only: bool = False,
     ) -> Tuple[List[Connection], int]:
         stmt = select(Connection)
         count_stmt = select(func.count(Connection.id))
@@ -65,9 +68,24 @@ class ConnectionRepository(BaseRepository[Connection]):
         if dst_ip:
             stmt = stmt.where(Connection.dst_ip == dst_ip)
             count_stmt = count_stmt.where(Connection.dst_ip == dst_ip)
-        if proto:
-            stmt = stmt.where(Connection.proto == proto.lower())
-            count_stmt = count_stmt.where(Connection.proto == proto.lower())
+        if protocols:
+            condition = func.lower(Connection.proto).in_([value.lower() for value in protocols])
+            stmt = stmt.where(condition)
+            count_stmt = count_stmt.where(condition)
+        if alerts_only:
+            scope = [Alert.provenance == "analysis"]
+            if archived_only:
+                scope.append(Alert.archive_batch_id.is_not(None))
+            elif not include_archived:
+                scope.append(Alert.archive_batch_id.is_(None))
+            # UNION includes both legacy direct links and linked evidence once,
+            # without scanning every alert again for each traffic record.
+            sources = select(Alert.connection_id).where(Alert.connection_id.is_not(None), *scope).union(
+                select(AlertConnection.connection_id).join(Alert, Alert.id == AlertConnection.alert_id).where(*scope),
+            )
+            condition = Connection.id.in_(sources)
+            stmt = stmt.where(condition)
+            count_stmt = count_stmt.where(condition)
         if conn_state:
             stmt = stmt.where(Connection.conn_state == conn_state)
             count_stmt = count_stmt.where(Connection.conn_state == conn_state)
@@ -76,6 +94,12 @@ class ConnectionRepository(BaseRepository[Connection]):
         stmt = stmt.order_by(desc(Connection.ts), desc(Connection.id)).offset(offset).limit(limit)
         results = list(self.db.scalars(stmt).all())
         return results, total
+
+    def protocols(self, include_archived: bool = False) -> list[str]:
+        query = select(func.lower(Connection.proto)).distinct().order_by(func.lower(Connection.proto))
+        if not include_archived:
+            query = query.where(Connection.archive_batch_id.is_(None))
+        return list(self.db.scalars(query).all())
 
     def count_total(self) -> int:
         return self.db.scalar(select(func.count(Connection.id)).where(Connection.archive_batch_id.is_(None))) or 0

@@ -1,6 +1,6 @@
 # AI Network Intrusion Detection System (NIDS)
 
-AI NIDS collects Zeek connection metadata (`conn.log`) and associated DNS, HTTP and TLS context from a remote sensor when an administrator requests it. The selected Random Forest classifier analyzes connection features, trained on a published Zeek-derived CIC-IDS2017 dataset, and flags suspicious connections for review. A React dashboard displays traffic records, protocol details, findings and traceable analysis sessions. See [AI experiments, results and reproduction](ai/README.md).
+AI NIDS collects Zeek connection metadata (`conn.log`) and associated DNS, HTTP and TLS context from a remote sensor when an administrator requests it. The selected Random Forest classifier analyzes connection features, trained on a published Zeek-derived CIC-IDS2017 dataset, and flags suspicious connections for review. A React dashboard displays traffic records, protocol details, findings and traceable analysis sessions. Traffic tables share their metadata columns; the dashboard adds review status and classifier score, plus the same multi-protocol selector to filter active findings. See [AI experiments, results and reproduction](ai/README.md).
 
 ---
 
@@ -149,8 +149,9 @@ systemd service startup on Ubuntu are independent of these web controls.
    - **Fetch & Analyze Logs** manually runs the same pipeline as the automatic follow-up: read new Zeek records, import and normalize them, run the classifier and retain evidence. The last-successful-sync card reflects completed sensor runs for the active dataset, not a health probe.
    - Filter security alerts by severity (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) and mark investigated alerts as resolved.
    - Use **Archive data** to move all active traffic records, alerts and analysis sessions into one preserved archive batch. The dashboard, current flows, statistics and exports exclude archived data. Sensor cursors remain unchanged and cannot be reset through the application.
-3. Navigate to **Zeek Flows** (`/connections`) to inspect stored traffic records, connection states (`SF`, `S0`, `REJ`), durations and directional byte/packet counts, filtered by protocol (`TCP`, `UDP`, `ICMP`). The available-data badges beneath each UID summarize its context; use **Details** to open the UID and DNS, HTTP and TLS metadata in a modal. Multiple transactions are retained and paginated; absent imported context is explicitly labelled.
-4. **All data** (`/all-data`) displays active and archived traffic, alerts and sessions. Restore a complete archive batch to return its records to current pages without reimporting logs or rerunning AI. Protocol context, source links, UIDs and alert review statuses are preserved. New sensor data continues from the existing cursors; already archived UIDs remain deduplicated.
+3. Navigate to **Zeek Flows** (`/connections`) to inspect stored traffic records, connection states (`SF`, `S0`, `REJ`), durations and directional byte/packet counts, filtered by one or more protocols discovered from the stored records. Available-data badges summarize its context; use **Details** to open the UID and DNS, HTTP and TLS metadata in a modal. Multiple transactions are retained and paginated; absent imported context is explicitly labelled.
+4. **All data** (`/all-data`) has Traffic records and Analysis sessions views. The Filters popover contains Alerts only and Hide current data switches. Alerts only filters traffic records with AI findings, or sessions that generated findings; protocol selection applies to traffic. Selecting All protocols clears individual choices, and choosing individual protocols clears All. Restore a complete archive batch to return its records to current pages without reimporting logs or rerunning AI. Protocol context, source links, UIDs and alert review statuses are preserved. New sensor data continues from the existing cursors; already archived UIDs remain deduplicated.
+   **View batch** opens `/archive-batches/:id`: a read-only historical copy with paginated traffic, protocol/alert filters, saved DNS/HTTP/TLS details and alert review statuses, and sessions with their traffic. Each new archive atomically saves its own snapshot. Restoring, changing live data or archiving again never changes earlier copies. Older batches without snapshots explicitly show retained totals only; their current data is not presented as historical content.
 
 Manual sensor ingestion also reads JSON `dns.log`, `http.log` and `ssl.log`,
 including gzip archives. Context is joined by Zeek UID and can arrive before or
@@ -308,6 +309,13 @@ automatically after its successful periodic availability probe; no separate serv
   lists batches and `POST /api/archives/{id}/restore` restores a lot. Both writes
   reject running analyses. Normal data queries default to active records;
   the authenticated All data page explicitly requests `include_archived=true`.
+  New archives also persist versioned `archive_records` payloads inside the same transaction.
+  Authenticated `GET /api/archives/{id}`, `/{id}/protocols`, `/{id}/connections`,
+  `/{id}/sessions`, `/{id}/connections/{connection_id}/events` and
+  `/{id}/connections/{connection_id}/alerts` read batch-local snapshots only.
+  Snapshot pagination is bounded; traffic filters accept repeated `protocols`,
+  `alerts_only` and an optional batch-local `session_id`. Legacy snapshot reads
+  return `409 archive_snapshot_unavailable`; unknown batches/records return 404.
   The former `/system/clear-database` and `/system/reset-sensor` endpoints no longer exist.
 - `GET /api/system/overview` returns persisted connection/session aggregates and
   requires the administrator cookie. Sensor access is exercised by an explicit
@@ -319,7 +327,7 @@ automatically after its successful periodic availability probe; no separate serv
   missing replies do not prove the VM is powered off. `/health` also remains available for
   installer/service verification.
 - Alert list, statistics and exports accept `provenance=analysis`.
-  The dashboard always shows and exports AI findings. The all-data view provides a shared Hide current data switch for traffic, alerts and sessions (server-side archived-only filtering), and preserves
+  The dashboard always shows and exports AI findings. The all-data view filters traffic and analysis sessions by archived-only or alerts-only scope, and preserves
   access to historical records without a separate demo-history selector.
 - `GET /api/analysis-sessions?limit=20&offset=0` lists history; `GET /{id}` retrieves
   status, counters, detector/preparation metadata and safe error codes.

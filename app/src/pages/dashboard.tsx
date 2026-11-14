@@ -35,11 +35,12 @@ export default function DashboardPage() {
 
   const [historyVersion, setHistoryVersion] = useState(0);
   const [selectedAlertIds, setSelectedAlertIds] = useState<number[]>([]);
+  const [protocols, setProtocols] = useState<string[]>([]);
   const [selectedFinding, setSelectedFinding] = useState<Alert | null>(null);
   const [busy, setBusy] = useState<Command | null>(null);
   const locked = useRef(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const resource = useDashboard(offset, pageSize);
+  const resource = useDashboard(offset, pageSize, protocols);
   const run = async (command: Command, id?: number | number[], status: AlertStatus = "RESOLVED") => {
     if (locked.current) return;
     locked.current = true;
@@ -123,6 +124,8 @@ export default function DashboardPage() {
             <Charts protocols={resource.data.overview.protocols} />
           </Suspense>
           <Alerts
+            protocols={protocols}
+            onProtocolsChange={values => { setProtocols(values); setOffset(0); setSelectedAlertIds([]); }}
             loading={resource.alertsLoading}
             page={resource.data.alerts}
             onPage={value => { setSelectedAlertIds([]); setOffset(value); }}

@@ -63,9 +63,9 @@ export function UbuntuStatus() {
     : result?.status === "host_unknown" ? t("ubuntu_host_unknown_help") : t("ubuntu_probe_help");
   return <div className="flex items-center gap-2" title={`${detail} ${description}`}>
     <Monitor className="hidden size-4 text-muted-foreground sm:block" aria-hidden="true" />
-    <span className="text-xs font-medium">{t("ubuntu_title")}</span>
-    <Badge className="w-36 shrink-0 justify-center whitespace-nowrap" variant={failed ? "destructive" : result?.status === "available" ? "success" : result && result.status !== "sample_mode" ? "destructive" : "secondary"} aria-live="polite">{label}</Badge>
-    <Button variant="ghost" size="icon" disabled={checking || syncing} aria-busy={checking || syncing} aria-label={t("ubuntu_check_now")} onClick={() => { void trigger.current?.(); }}>
+    <span className="hidden text-xs font-medium sm:inline">{t("ubuntu_title")}</span>
+    <Badge className="w-28 shrink-0 justify-center whitespace-nowrap sm:w-36" variant={failed ? "destructive" : result?.status === "available" ? "success" : result && result.status !== "sample_mode" ? "destructive" : "secondary"} aria-live="polite"><span className="truncate">{label}</span></Badge>
+    <Button variant="ghost" size="icon" className="size-8 sm:size-10" disabled={checking || syncing} aria-busy={checking || syncing} aria-label={t("ubuntu_check_now")} onClick={() => { void trigger.current?.(); }}>
       <RefreshCw className={`size-4 ${checking || syncing ? "animate-spin motion-reduce:animate-none" : ""}`} />
     </Button>
   </div>;

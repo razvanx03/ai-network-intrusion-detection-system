@@ -82,7 +82,8 @@ class ConnectionFilter(BaseModel):
     archived_only: bool = False
     src_ip: Optional[str] = None
     dst_ip: Optional[str] = None
-    proto: Optional[str] = None
+    protocols: list[str] = Field(default_factory=list, max_length=64)
+    alerts_only: bool = False
     conn_state: Optional[str] = None
     limit: int = 50
     offset: int = 0

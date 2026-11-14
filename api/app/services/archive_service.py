@@ -1,5 +1,6 @@
 from app.repositories.archive_repository import ArchiveRepository
 from app.repositories.analysis_repository import AnalysisRepository
+from app.repositories.archive_snapshot_repository import ArchiveSnapshotRepository
 from app.services.analysis_service import AnalysisBusyError
 
 
@@ -16,6 +17,7 @@ class ArchiveService:
         self.db = db
         self.archives = ArchiveRepository(db)
         self.sessions = AnalysisRepository(db)
+        self.snapshots = ArchiveSnapshotRepository(db)
 
     def change(self, batch_id=None):
         try:
@@ -30,6 +32,7 @@ class ArchiveService:
                 self.archives.archive(batch)
                 if not (batch.connections or batch.alerts or batch.sessions):
                     raise EmptyArchiveError("No active data to archive.")
+                self.snapshots.capture(batch)
             self.db.commit()
             self.db.refresh(batch)
             return batch

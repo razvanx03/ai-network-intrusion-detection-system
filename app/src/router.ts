@@ -6,12 +6,13 @@ import { components, hooks, utils } from '@generouted/react-router/client'
 export type Path =
   | `/`
   | `/all-data`
+  | `/archive-batches/:id`
   | `/connections`
   | `/dashboard`
   | `/login`
 
 export type Params = {
-  
+  '/archive-batches/:id': { id: string }
 }
 
 export type ModalPath = never

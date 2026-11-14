@@ -17,13 +17,17 @@ class ConnectionService:
         return self.conn_repo.get_filtered(
             src_ip=filters.src_ip,
             dst_ip=filters.dst_ip,
-            proto=filters.proto,
             conn_state=filters.conn_state,
             limit=filters.limit,
             offset=filters.offset,
             include_archived=filters.include_archived,
             archived_only=filters.archived_only,
+            protocols=filters.protocols,
+            alerts_only=filters.alerts_only,
         )
+
+    def protocols(self, include_archived: bool = False) -> list[str]:
+        return self.conn_repo.protocols(include_archived)
 
     def count_total(self) -> int:
         return self.conn_repo.count_total()

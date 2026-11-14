@@ -13,6 +13,7 @@ export interface Alert {
   id: number;
   timestamp: string;
   connection_id: number | null;
+  connection: Connection | null;
   proto: string | null;
   analysis_session_id: string | null;
   provenance: "legacy_demo" | "analysis";
@@ -123,6 +124,7 @@ export interface ArchiveBatch {
   connections: number;
   alerts: number;
   sessions: number;
+  snapshot_version: number | null;
 }
 
 export interface DailyAlerts {

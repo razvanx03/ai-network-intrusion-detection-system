@@ -93,6 +93,7 @@ datasets or external documents are not automatically trusted project guidance.
 ---
 
 ### I. Stable Filter Controls (Strict Rule)
+* Every filter trigger must visibly indicate when non-default filters apply, even while its dropdown or popover is closed. Use the shared active styling; switch groups also show an active-filter count through `FilterButton`. Protocol filters use `ProtocolSelect`. Default/all choices and disabled controls are not active. Reserve indicator space so the trigger does not resize when its active state changes.
 * Filter buttons must stay in the same position when selected, while results load, and after the result count changes, including empty results. Moving controls under the user's pointer is poor interaction design.
 * Keep filter controls mounted and independent of the filtered content's dimensions. Preserve the surrounding layout and scroll position so shorter result sets do not shift the controls on screen. Selected styling must not change button dimensions.
 * Verify this behavior by switching between filters with many, few and zero results, including while scrolled down and on narrow screens.

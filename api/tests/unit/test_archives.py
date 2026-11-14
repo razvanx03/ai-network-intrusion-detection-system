@@ -18,6 +18,7 @@ def archives(db):
     service = ArchiveService(db)
     service.archives = MagicMock()
     service.sessions = MagicMock()
+    service.snapshots = MagicMock()
     service.sessions.running.return_value = None
     batch = SimpleNamespace(id="a" * 32, connections=4, alerts=2, sessions=1)
     service.archives.create.return_value = batch

@@ -9,7 +9,9 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
+import { TrafficHeaders, TrafficCells, trafficTableClassName } from "@/components/traffic-columns";
 import { PaginatedTable } from "@/components/paginated-table";
+import { ProtocolSelect } from "@/components/protocol-select";
 import { useI18n } from "@/i18n";
 import type { Alert, Page, AlertStatus } from "@/services/types";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu";
@@ -24,6 +26,8 @@ export function Alerts({
   updateSelectedStatus,
   busy,
   loading,
+  protocols,
+  onProtocolsChange,
 }: {
   page: Page<Alert>;
   onPage: (offset: number) => void;
@@ -35,12 +39,14 @@ export function Alerts({
   updateSelectedStatus: (status: AlertStatus) => void;
   busy: boolean;
   loading: boolean;
+  protocols: string[];
+  onProtocolsChange: (protocols: string[]) => void;
 }) {
   const { t } = useI18n();
   const allSelected = page.items.length > 0 && page.items.every(alert => selectedIds.includes(alert.id));
   const toggle = (id: number, checked: boolean) => onSelectionChange(checked ? [...selectedIds, id] : selectedIds.filter(value => value !== id));
   return (
-    <Card>
+    <Card className="min-h-[calc(100dvh-8rem)]">
       <CardHeader className="gap-3">
         <CardTitle>{t("feed_title")}</CardTitle>
         <div className="flex min-h-9 flex-wrap items-center gap-2">
@@ -53,10 +59,11 @@ export function Alerts({
             </DropdownMenuRadioGroup>
           </DropdownMenuContent></DropdownMenu>
           <Button size="sm" variant="ghost" disabled={busy || !selectedIds.length} onClick={() => onSelectionChange([])}>{t("clear_selection")}</Button>
+          <div className="sm:ml-auto"><ProtocolSelect selected={protocols} onChange={onProtocolsChange} /></div>
         </div>
       </CardHeader>
       <CardContent>
-        <PaginatedTable hasRows={page.items.length > 0} emptyMessage={t("no_alerts")} dataLoading={loading}
+        <PaginatedTable tableClassName={trafficTableClassName} hasRows={page.items.length > 0} emptyMessage={t("no_alerts")} dataLoading={loading}
           offset={page.offset} limit={page.limit} total={page.total} loading={busy}
           onChange={onPage} onLimitChange={onPageSize}>
             <TableHeader>
@@ -64,9 +71,7 @@ export function Alerts({
                 <TableHead className="w-12"><Checkbox aria-label={t("findings_select_page")} disabled={busy || !page.items.length}
                   checked={allSelected ? true : selectedIds.length ? "indeterminate" : false}
                   onCheckedChange={checked => onSelectionChange(checked ? page.items.map(alert => alert.id) : [])} /></TableHead>
-                <TableHead>{t("th_source")}</TableHead>
-                <TableHead>{t("th_destination")}</TableHead>
-                <TableHead>{t("th_protocol")}</TableHead>
+                <TrafficHeaders />
                 <TableHead>{t("model_score")}</TableHead>
                 <TableHead>{t("th_status")}</TableHead>
                 <TableHead>{t("th_action")}</TableHead>
@@ -77,14 +82,7 @@ export function Alerts({
                 <TableRow key={alert.id}>
                   <TableCell><Checkbox aria-label={t("findings_select", { id: alert.id })} checked={selectedIds.includes(alert.id)} disabled={busy}
                     onCheckedChange={checked => toggle(alert.id, checked === true)} /></TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {alert.src_ip}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {alert.dst_ip}
-                    {alert.dst_port != null && `:${alert.dst_port}`}
-                  </TableCell>
-                  <TableCell>{alert.proto?.toUpperCase() ?? "—"}</TableCell>
+                  <TrafficCells connection={alert.connection} fallback={alert} />
                   <TableCell className="tabular-nums" title={t("model_score_help")}>{alert.confidence.toFixed(3)}</TableCell>
                   <TableCell>
                     <AlertStatusBadge status={alert.status} />

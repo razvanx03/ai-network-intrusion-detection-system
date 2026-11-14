@@ -15,7 +15,8 @@ router = APIRouter(prefix=CONNECTION_ROUTE_PREFIX, tags=["Network Logs"], depend
 def get_connections(
     src_ip: Optional[str] = Query(None, description="Filter by source IP"),
     dst_ip: Optional[str] = Query(None, description="Filter by destination IP"),
-    proto: Optional[str] = Query(None, description="Filter by protocol (tcp, udp, icmp)"),
+    protocols: list[str] | None = Query(None, max_length=64),
+    alerts_only: bool = Query(False),
     conn_state: Optional[str] = Query(None, description="Filter by Zeek connection state"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -28,7 +29,8 @@ def get_connections(
     filters = ConnectionFilter(
         src_ip=src_ip,
         dst_ip=dst_ip,
-        proto=proto,
+        protocols=protocols or [],
+        alerts_only=alerts_only,
         conn_state=conn_state,
         limit=limit,
         offset=offset,
@@ -42,6 +44,11 @@ def get_connections(
         "limit": limit,
         "offset": offset
     }
+
+
+@router.get("/protocols", response_model=list[str])
+def protocols(include_archived: bool = Query(False), db: Session = Depends(get_db)):
+    return ConnectionService(db).protocols(include_archived)
 
 
 @router.get("/stats")

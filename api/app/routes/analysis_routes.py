@@ -7,6 +7,7 @@ from app.schemas.analysis import AnalysisSessionResponse
 from app.schemas.alert import AlertResponse
 from app.schemas.connection import ConnectionResponse
 from app.services.analysis_service import AnalysisRunError
+from app.services.connection_service import ConnectionService
 
 router = APIRouter(prefix="/analysis-sessions", tags=["Analysis sessions"], dependencies=[Depends(get_current_user)])
 
@@ -25,8 +26,8 @@ def require_session(repo: AnalysisRepository, session_id: str, include_archived:
 
 @router.get("")
 def list_sessions(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0), include_archived: bool = Query(False),
-                  archived_only: bool = Query(False), db: Session = Depends(get_db)):
-    page = AnalysisRepository(db).page(limit, offset, include_archived, archived_only)
+                  archived_only: bool = Query(False), alerts_only: bool = Query(False), db: Session = Depends(get_db)):
+    page = AnalysisRepository(db).page(limit, offset, include_archived, archived_only, alerts_only)
     page["items"] = [AnalysisSessionResponse.model_validate(item) for item in page["items"]]
     return page
 
@@ -65,4 +66,4 @@ def alert_sources(session_id: str, alert_id: int, include_archived: bool = Query
     result = AnalysisRepository(db).alert_connections(session_id, alert_id)
     if result is None:
         raise HTTPException(404, "Alert not found in this analysis session.")
-    return [ConnectionResponse.model_validate(item) for item in result]
+    return ConnectionService(db).with_context(result)

@@ -15,7 +15,7 @@ export function SettingsDropdown() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={t("settings_title")}>
+        <Button variant="ghost" size="icon" className="size-8 sm:size-10" aria-label={t("settings_title")}>
           <Settings className="size-4" />
         </Button>
       </DropdownMenuTrigger>

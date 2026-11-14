@@ -22,9 +22,11 @@ class AnalysisRepository:
         self.db.flush()
         return session
 
-    def page(self, limit: int, offset: int, include_archived: bool = False, archived_only: bool = False):
+    def page(self, limit: int, offset: int, include_archived: bool = False, archived_only: bool = False, alerts_only: bool = False):
         condition = (AnalysisSession.archive_batch_id.is_not(None) if archived_only
                      else True if include_archived else AnalysisSession.archive_batch_id.is_(None))
+        if alerts_only:
+            condition = (AnalysisSession.new_alerts_detected > 0) & condition
         total = self.db.scalar(select(func.count()).select_from(AnalysisSession).where(condition)) or 0
         items = self.db.scalars(select(AnalysisSession).where(condition).order_by(
             desc(AnalysisSession.started_at), desc(AnalysisSession.id),

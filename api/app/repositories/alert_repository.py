@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple, Dict, Any
 from datetime import datetime
-from sqlalchemy import select, func, desc, case, update
+from sqlalchemy import select, func, desc, case, update, or_
+from app.models.connection import Connection
 from sqlalchemy.orm import Session
 from app.models.alert import Alert
 from app.models.analysis_session import AlertConnection
@@ -29,6 +30,7 @@ class AlertRepository(BaseRepository[Alert]):
         attack_type: Optional[str] = None,
         status: Optional[str] = None,
         src_ip: Optional[str] = None,
+        protocols: list[str] | None = None,
         limit: int = 50,
         offset: int = 0,
         provenance: str | None = None,
@@ -58,6 +60,12 @@ class AlertRepository(BaseRepository[Alert]):
         if src_ip:
             stmt = stmt.where(Alert.src_ip == src_ip)
             count_stmt = count_stmt.where(Alert.src_ip == src_ip)
+        if protocols:
+            matches = func.lower(Connection.proto).in_([value.lower() for value in protocols])
+            linked = select(AlertConnection.alert_id).join(Connection, Connection.id == AlertConnection.connection_id).where(matches)
+            condition = or_(Alert.connection.has(matches), Alert.id.in_(linked))
+            stmt = stmt.where(condition)
+            count_stmt = count_stmt.where(condition)
 
         total = self.db.scalar(count_stmt) or 0
         stmt = stmt.order_by(desc(Alert.timestamp), desc(Alert.id)).offset(offset).limit(limit)

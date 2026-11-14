@@ -23,11 +23,11 @@ const fieldLabels: Record<string, TranslationKey> = {
   subject: "context_subject", issuer: "context_issuer",
 };
 
-function ProtocolSection({ connection, kind, includeArchived }: { connection: Connection; kind: ContextType; includeArchived: boolean }) {
+function ProtocolSection({ connection, kind, includeArchived, archiveBatchId }: { connection: Connection; kind: ContextType; includeArchived: boolean; archiveBatchId?: string }) {
   const { t, language } = useI18n();
   const [offset, setOffset] = useState(0);
-  const load = useCallback((signal: AbortSignal) => api.getConnectionEvents(connection.id, kind, offset, signal, includeArchived), [connection.id, kind, offset, includeArchived]);
-  const cacheKey = `conn_events:${connection.id}:${kind}:${includeArchived}:${offset}`;
+  const load = useCallback((signal: AbortSignal) => archiveBatchId ? api.getArchiveEvents(archiveBatchId, connection.id, kind, offset, signal) : api.getConnectionEvents(connection.id, kind, offset, signal, includeArchived), [connection.id, kind, offset, includeArchived, archiveBatchId]);
+  const cacheKey = `conn_events:${archiveBatchId ?? includeArchived}:${connection.id}:${kind}:${offset}`;
   const resource = useResource(load, true, 0, cacheKey);
   const formatValue = (value: ProtocolEvent["fields"][string]): string => {
     if (value === null) return "—";
@@ -55,10 +55,10 @@ function ProtocolSection({ connection, kind, includeArchived }: { connection: Co
   </section>;
 }
 
-export function ConnectionContext({ connection, includeArchived = false }: { connection: Connection; includeArchived?: boolean }) {
+export function ConnectionContext({ connection, includeArchived = false, showSummary = true, archiveBatchId }: { connection: Connection; includeArchived?: boolean; showSummary?: boolean; archiveBatchId?: string }) {
   const { t } = useI18n();
   return <div className="min-w-0 space-y-4 py-2">
-    <dl>
+    {showSummary && <><dl>
       <dt className="text-xs text-muted-foreground">{t("context_uid")}</dt>
       <dd className="mt-1 break-all font-mono text-sm">{connection.uid}</dd>
     </dl>
@@ -66,9 +66,9 @@ export function ConnectionContext({ connection, includeArchived = false }: { con
       <div><dt className="text-xs text-muted-foreground">{t("context_history")}</dt><dd className="mt-1 break-all font-mono">{connection.history ?? "—"}</dd></div>
       <div><dt className="text-xs text-muted-foreground">{t("th_service")}</dt><dd className="mt-1">{connection.service ?? "—"}</dd></div>
       <div><dt className="text-xs text-muted-foreground">{t("th_duration")}</dt><dd className="mt-1">{connection.duration?.toFixed(3) ?? "—"}</dd></div>
-    </dl>
+    </dl></>}
     {(["dns", "http", "ssl"] as const).map(kind => connection.available_logs.includes(kind)
-      ? <ProtocolSection key={kind} connection={connection} kind={kind} includeArchived={includeArchived} />
+      ? <ProtocolSection key={kind} connection={connection} kind={kind} includeArchived={includeArchived} archiveBatchId={archiveBatchId} />
       : <section key={kind} className="flex items-center justify-between border-t pt-3 text-sm"><h4 className="font-semibold">{t(logKeys[kind])}</h4><span className="text-muted-foreground">{t("context_none")}</span></section>)}
   </div>;
 }
