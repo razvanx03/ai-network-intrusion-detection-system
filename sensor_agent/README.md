@@ -1,16 +1,17 @@
 # Zeek sensor agent
 
-The backend pulls connection and DNS/HTTP/TLS logs on demand. `collector.py` is the authenticated,
-HTTP log reader running on Ubuntu; the main API, database and AI inference
-remain on the Windows host. Ingestion progress belongs to backend SQLite.
+The host backend pulls connection and DNS/HTTP/TLS logs during an analysis.
+`collector.py` is the API-key-authenticated HTTP reader running on Ubuntu; the
+main API, SQLite database and AI inference remain on the host. Analyses can be
+requested manually or automatically by the signed-in application's availability
+cycle. The collector does not push logs, schedule AI analysis or train models.
 
-Collector 2.4 discovers `conn.log`, `dns.log`, `http.log`, `ssl.log` and their
-retained JSON/gzip archives. `/files` reports each stream's `log_type`; `/logs`
-keeps the same byte-offset protocol. Connection stream IDs remain compatible with
-existing cursors; protocol stream IDs include their log type. Upgrade collector
-and backend together. Copy the updated collector to the path used by the existing
-`nids-sensor.service` and restart that service, or use the unified setup for a new
-VM. No Zeek policy change is needed when its standard DNS, HTTP and TLS JSON logs
+Collector **2.6.0** discovers JSON `conn.log`, `dns.log`, `http.log`, `ssl.log` and
+their retained archives. The backend uses versioned `POST /files/discover` and
+byte-offset `GET /logs`; `GET /files` is retained for diagnostics. Upgrade collector
+and backend together. Use the unified setup for a new VM, or the scoped updater
+for an existing installation described under [Explicit full reset](#explicit-full-reset).
+No Zeek policy change is needed when its standard DNS, HTTP and TLS JSON logs
 are already enabled. Unavailable/deleted protocol logs cannot be reconstructed.
 
 ## One-command Ubuntu VM setup
@@ -34,8 +35,9 @@ address (DHCP or an existing static configuration). Check addresses with
 `ip -br -4 address`. Interface names/IPs can differ on another VM; use the script's
 options. The three adapters must be distinct and their subnets must not overlap.
 
-Copy this directory to Ubuntu. The setup needs `setup_vm.sh`, `collector.py` and
-`requirements.txt` together. From the **VM console**, run:
+Copy the complete directory to Ubuntu. Setup requires `setup_vm.sh`,
+`collector.py`, `requirements.txt`, `reset_logs.py` and `nids-reset.service`
+together. From the **VM console**, run:
 
 ```bash
 cd ~/sensor_agent
@@ -60,6 +62,8 @@ Replace the example IP with the actual host-only address. One invocation perform
 4. **Sensor autostart:** deploys `collector.py` to `/opt/nids-sensor`, creates its
    Python virtual environment, installs dependencies, prepares the protected
    `.env`, enables/restarts `nids-sensor.service` and checks authenticated health.
+   It also installs/enables `nids-reset.service` with a restricted root broker;
+   installation never invokes a reset or grants the collector general sudo access.
 
 No automatic reboot is issued. Existing managed services are stopped during
 configuration and started again when their stages succeed. Repeated runs keep the
@@ -81,9 +85,9 @@ be validated on the newly created VM.
 
 ### Credentials and existing installations
 
-If `/opt/nids-sensor/.env` already exists, it is reused. Otherwise, a real `.env`
-beside the copied setup is used; if neither exists, setup generates a random API
-key. The key is never printed and the installed `.env` is owned by the service
+An explicit `--env-file` takes precedence. Otherwise, `/opt/nids-sensor/.env`
+is reused if present, then a real `.env` beside the copied setup. If none exists,
+setup generates a random API key. The key is never printed and the installed `.env` is owned by the service
 account with mode `0600`. Do not copy an unchanged `.env.example` to `.env`: its
 placeholder key is intentionally rejected.
 
@@ -109,8 +113,10 @@ SENSOR_AGENT_API_KEY=<same API_KEY as /opt/nids-sensor/.env>
 
 Read/copy the key locally from the protected file; do not commit either `.env` or
 paste the key into shared logs. Restart the backend after changing its configuration.
-HTTP does not encrypt the key or logs; use the trusted isolated management network,
-or arrange HTTPS before exposing this link to an untrusted network.
+HTTP does not encrypt the key or logs. The current installer does not generate
+TLS certificates or configure HTTPS; certificate/trust provisioning is planned
+separately. Use the trusted isolated management network and restrict access;
+configure verified HTTPS separately before using an untrusted network.
 
 The Windows client VM must be attached to the same Internal Network and configured
 with a client address (e.g. `192.168.50.2/24`), gateway `192.168.50.1`, and a reachable
@@ -135,7 +141,7 @@ are local recovery material, not a promise of automatic full rollback.
 After setup and after a manual reboot:
 
 ```bash
-sudo systemctl status zeek nids-sensor --no-pager
+sudo systemctl status zeek nids-sensor nids-reset --no-pager
 sudo /opt/zeek/bin/zeekctl status
 sudo ethtool -k enp0s8
 sysctl net.ipv4.ip_forward
@@ -145,8 +151,9 @@ sudo iptables -t nat -S POSTROUTING
 `zeek.service` remains a oneshot startup/shutdown unit; `active (exited)` alone does
 not prove that Zeek is still capturing or recover it after a later crash. The sensor
 uses restart-on-failure, which does not detect a hung process. Test actual client
-traffic and pull logs from the backend after installing. Current JSON `conn.log`
-and retained `conn.*.log[.gz]` archives are supported; other log types and TSV are not.
+traffic and pull logs from the backend after installing. Current JSON `conn.log`,
+`dns.log`, `http.log`, `ssl.log` and their retained JSON/gzip archives are supported.
+Other Zeek log types and TSV are not imported by this collector.
 
 ## Backend and network
 
@@ -157,25 +164,48 @@ configuration changes. Run the backend from `api/` when using its default relati
 SQLite URL. Startup creates the `sensor_cursors` table if missing.
 
 The Windows client routes lab traffic through Ubuntu's internal interface. A separate
-host-only interface lets the Windows host backend reach the agent without exposing
-the management endpoint on the monitored network. Use a trusted private network or
-HTTPS because HTTP sends the API key without transport encryption.
+host-only interface lets the host backend reach the sensor through a separate
+management address. Full setup binds the agent to that address; an older/manual
+installation may bind differently. Binding and firewall rules must match the
+intended access scope. HTTP sends the API key without transport encryption.
+
+## Log locations and context
+
+| Path in the standard installation | Contents |
+|---|---|
+| `/opt/zeek/spool/zeek/` | Current logs being written by Zeek |
+| `/opt/zeek/logs/YYYY-MM-DD/` | Rotated logs, commonly gzip-compressed |
+| `/opt/zeek/logs/current` | Link to the current spool directory, not a second copy |
+
+The reader is restricted to connection, DNS, HTTP and TLS JSON logs. Zeek can also
+produce operational/security logs such as `stderr.log`, `stats.log` and
+`notice.log`; these are not imported or passed to the selected classifier.
+`stderr.log` and service journals help diagnose capture/service errors.
+
+The backend links context by Zeek UID. Its Server name (SNI) column comes from
+`server_name` in `ssl.log`, not a reverse DNS guess. The AI classifier uses only
+connection features; imported context is for inspection and does not decrypt
+HTTPS content. A flow may be logged only after closure or an inactivity timeout.
 
 ## Protocol and recovery
 
-- Every agent endpoint requires `X-API-Key`, including `GET /health`.
-- `GET /files` discovers current and retained archived connection, DNS, HTTP and TLS
-  streams, excluding unrelated log types. Entries contain `file`, `file_id`, `archived`, `log_type` and `first_ts`.
-  The response also contains `issues` for files that cannot be discovered safely.
-  Each issue supplies a relative filename and a stable code, without raw log data.
+- Agent data, status and reset endpoints require `X-API-Key`, including `GET /health`.
+- `POST /files/discover` accepts `{"excluded_versions": []}` and returns current/
+  retained connection, DNS, HTTP and TLS streams. Entries contain `file`, `file_id`,
+  `archived`, `log_type`, `first_ts` and a version `fingerprint`. The response also
+  includes `issues` for discovery failures and `empty_files` for healthy sealed
+  empty streams. `GET /files` provides the legacy diagnostic listing, not the
+  backend's versioned discovery contract.
 - `file_id` is a digest of the first complete record (namespaced for protocol context). Rename and gzip
   compression preserve it, including when the active file becomes an archive.
 - `GET /logs?file=...&file_id=...&offset=...&limit=500` returns `records`,
-  `next_offset`, `has_more`, and identity metadata. Offsets count **uncompressed bytes**
+  `next_offset`, `has_more`, and identity metadata. Archived reads also send the
+  discovery `fingerprint` to reject a changed version before reading. Offsets count **uncompressed bytes**
   and must be line boundaries returned by the agent. A mismatched stream returns 409;
   refresh discovery and retry the analysis action after rotation finishes.
 - The backend drains discovered files in bounded batches. Each batch commits its
-  connections, generated alerts, and cursor in one transaction. A failed batch does
+  connection/context data, source links, generated alerts, session counts and
+  cursor progress in one transaction. A failed batch does
   not advance its cursor; previously committed batches remain available in SQLite.
 - Completed archives are skipped. Active files retain their byte offset. A renamed
   active file resumes at that offset in its archive before being marked completed.
@@ -188,10 +218,14 @@ HTTPS because HTTP sends the API key without transport encryption.
   explicitly. Updated `/logs` responses use HTTP 422 with a typed per-file code.
   The backend stops reading that file for this run and continues the other files,
   recording `file_issues` in the analysis session. No cursor is advanced over the
-  failed batch; prior committed batches remain stored. A skipped file is retried
-  from its retained cursor on the next manual fetch. No original log is changed
-  or deleted. Connection/authentication failures and invalid transport contracts
-  still fail the operation rather than masquerading as an empty sensor.
+  failed batch; prior committed batches remain stored. Permanent invalid/oversized
+  archive versions are reported once, then set aside in import problem history.
+  Changed versions and explicit Retry allow another read; current files and
+  temporary access failures remain retryable. A blocked/retried archive replays
+  from zero with deduplication and compare-and-swap against its retained cursor.
+  No original log is changed or deleted by normal ingestion. Connection/
+  authentication failures and invalid transport contracts still fail the operation
+  rather than masquerading as an empty sensor.
 - Archiving/restoring backend data never resets SQLite cursors or changes VM logs.
   The separate, explicitly confirmed full reset clears both VM logs and backend data/cursors.
   Archived UIDs remain deduplicated; use All data to restore an archive batch.
@@ -211,8 +245,9 @@ typed RESET confirmation. It is not a troubleshooting action to run automaticall
 
 For an existing installation, copy the updated sensor_agent directory to Ubuntu
 and run `sudo bash sensor_agent/install_reset.sh`. It discovers the existing
-non-root collector service/user, updates collector.py and installs nids-reset.service
-with the root-owned reset_logs.py broker. It preserves .env and gateway settings,
+non-root collector service/user, updates its active script (`collector.py` or the
+legacy `sensor_agent.py` filename) and installs `nids-reset.service` with the
+root-owned `reset_logs.py` broker. It preserves .env and gateway settings,
 backs up replaced files under /var/backups, and does not invoke log cleanup.
 The full setup_vm.sh installer includes the same service.
 
@@ -228,7 +263,8 @@ retries of a completed operation from deleting newer captures. Do not delete the
 receipts to resolve an interrupted reset. Retry from the application instead.
 
 The backend persists a reset guard before issuing cleanup and deletes its own
-traffic/archive/context/session/cursor data only after the VM acknowledges completion.
+traffic/archive/context/session/cursor/import-problem data only after the VM
+acknowledges completion.
 A timeout is an uncertain outcome, not proof that the VM did nothing: the guard
 remains and the same operation must be resumed. The local and remote systems do
 not support atomic rollback of permanent deletion. Neither VM installation nor

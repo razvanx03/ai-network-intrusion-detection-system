@@ -8,7 +8,7 @@ comparison, capture-quality issue, access limits, and reproduction commands;
 all candidate metrics. The selected deployment remains unchanged. Newer source
 dates alone do not establish better transfer or reliable load detection.
 
-The source/feature extension study compares the existing CIC baseline with
+The source/feature extension comparison evaluates the existing CIC baseline with
 official UWF-ZeekData24 partitions and a selected CTU-SME-11 subset. See
 [`reports/extension_report.md`](reports/extension_report.md) for measured results,
 selection limits and reproduction commands. `study_acquire.py`,
@@ -23,14 +23,19 @@ challenge native-dataset scores. The current runtime feature contract remains
 unchanged unless a candidate is explicitly selected and integrated.
 
 Offline preparation and training live in `ai/`. Shared feature extraction and
-inference live in `api/app/ai/`. No training, downloading, ingestion or scheduled
-analysis is triggered by starting the API. Inference still requires the existing
-manual analysis command.
+inference live in `api/app/ai/`. Starting the API loads the selected detector,
+bootstraps/migrates the database and interrupts unfinished sessions; it does not
+train, download data or start a sensor analysis. While signed in, the web
+application automatically fetches/analyzes after a successful sensor availability
+check, and the manual command uses the same pipeline. There is no independent
+backend analysis scheduler. Each newly imported connection UID is scored once;
+context backfill, archive/restore and browsing do not rerun inference.
 
 ## Reproduce from the repository root
 
 Use Python 3.13 (the recorded run used 3.13.14) and a virtual environment. The
-PowerShell commands below use the existing backend environment:
+PowerShell commands below use the backend environment. On a fresh checkout,
+create it first with `python -m venv api/.venv`:
 
 ```powershell
 & api/.venv/Scripts/python.exe -m pip install -r api/requirements.txt -r ai/requirements.txt
@@ -109,8 +114,9 @@ The CIC derivative uses the standard Zeek names. Exact Zeek-version behavior,
 timeouts, capture loss and checksum policies remain compatibility limitations.
 
 No IPs, UID, ports, absolute timestamps, capture names, labels, rule IDs, label
-confidence, DNS/HTTP/TLS fields or Zeek `history` enter the models. Thus only core
-connection features available in both sources and the application are compared.
+confidence, DNS/HTTP/TLS fields or Zeek `history` enter the baseline/selected
+models. These compare only core connection features available in both sources
+and the application.
 The API preserves missing numerical values through normalization **and storage**;
 existing zero values previously saved in the database cannot be reconstructed.
 The preparation version changes to `zeek-connection-v2` for traceability.
@@ -118,7 +124,10 @@ The preparation version changes to `zeek-connection-v2` for traceability.
 Connection payload totals, IP byte totals, packet flags and window statistics are
 not interchangeable. Zeek `history` cannot reconstruct exact TCP flag counts.
 No packet-level IAT, jitter, TTL, packet-length distribution or time-window
-behavior is claimed. No DNS/HTTP/TLS ingestion was added.
+behavior is claimed by the selected model. The application separately imports
+DNS/HTTP/TLS events and displays SNI from `ssl.log` as investigation context;
+these fields do not affect its classifier score. The offline extension explores
+additional features without changing the deployed feature contract.
 
 ## Evaluation protocol
 
@@ -197,22 +206,29 @@ Do not load untrusted joblib/pickle artifacts: their format can execute code.
 The export contains only the selected artifact, deployment manifest and backend
 requirements, with no credentials, database or captured traffic.
 
-The adapter preserves `AnalysisEngine`, manual analysis, source-record links and
-per-batch transactions. It emits only **Suspicious Connection**, medium severity,
-with no fabricated MITRE mapping or attack-family claim. `confidence` contains the
+The adapter preserves `AnalysisEngine`, manual/UI-automatic sensor analysis,
+source-record links and per-batch transactions. It emits only **Suspicious
+Connection**, medium severity, with no fabricated MITRE mapping or attack-family
+claim. `confidence` contains the
 classifier's uncalibrated score, not a verified attack probability. Descriptions
 are translated by the frontend. Isolation Forest is not deployed because these
 experiments do not justify it. The absence of an alert is not proof of safety.
 
 ## Verification and remaining work
 
-The recorded manual API check uses 200 real held-out CIC records in a separate
-temporary SQLite database: compare features before/after storage, authenticate
-with the existing cookie flow, trigger stored-record analysis, compare alert
-counts to offline predictions, inspect source evidence links and verify logout.
-It does not call the remote sensor or alter the application database. Its result
-is in `reports/manual_verification.json`; this is a record of an executed manual
-check, not an automated test suite.
+The historical manual API check used 200 real held-out CIC records in a separate
+temporary SQLite database to compare offline/stored features and predicted alerts,
+exercise cookie authentication/logout and inspect evidence links. Its recorded
+result is `reports/manual_verification.json`; it did not contact the sensor or
+modify the application database. That check used an older stored-record analysis
+path, which has since been removed. It is historical evidence, not a command or
+endpoint to rerun against the current application, and not an automated suite.
+
+Current runtime verification should use the sensor import pipeline: confirm
+captured records reach the backend, new UIDs are scored and linked to sessions,
+repeat pulls do not duplicate/reclassify them, and imported context does not
+change scores. A detected port scan alone does not validate DoS/DDoS detection;
+the selected model does not count attempts or requests in a time window.
 
 ```powershell
 & api/.venv/Scripts/python.exe -m compileall -q ai api/app
@@ -223,10 +239,15 @@ npm run build
 npm run lint
 ```
 
-Backend unit checks are now available under `api/tests/unit/`; see the root README
-for commands and isolation limits. They do not replace dataset evaluation or the
-recorded API check. No branches, staging, commits or pushes are created. Live VM traffic,
-capture quality, benign lab alarm rates, controlled lab attack recall, laptop
-performance and additional protocol/security logs still need validation. No new
-VM experiment was performed for this comparison. Train/evaluation scores do not
-establish those properties.
+Backend unit checks live under `api/tests/unit/`; see the [root README](../README.md#development-checks)
+for commands and isolation limits. They use synthetic data and mocked boundaries,
+not deployed model artifacts, real databases or VM connections, and do not replace
+dataset evaluation or live capture checks.
+
+Baseline API verification, the controlled live/CIC follow-up and the source/feature
+extension are separate records of work. The follow-up report documents its live
+VM experiments and capture-quality findings; its results must not be generalized
+to an untested setup. Repeat end-to-end checks on a new laptop/VM installation.
+Broader benign alarm rates, attack coverage, sustained-load behavior and additional
+security logs remain evaluation work. Offline scores do not establish those
+properties.
