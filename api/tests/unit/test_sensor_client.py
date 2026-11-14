@@ -148,3 +148,52 @@ def test_corrupt_sample_fails_fast(sensor, tmp_path):
     (tmp_path / "zeek_sample_batch1.json").write_text("{broken-json", encoding="utf-8")
     with pytest.raises(ValueError, match="Corrupt"):
         asyncio.run(sensor.fetch_new_logs())
+
+
+def test_discovery_sends_excluded_versions_and_preserves_repaired_empty_archives(sensor, mock_http):
+    versions = ["a" * 64, "b" * 64]
+    requests = mock_http(lambda _: httpx.Response(200, json={"files": [], "empty_files": [
+        {"file": "day/dns.log.gz", "fingerprint": "c" * 64}]}))
+    result = asyncio.run(sensor.discover_files(versions))
+    assert requests[0].method == "POST"
+    assert json.loads(requests[0].content) == {"excluded_versions": versions}
+    assert result.empty_files[0].file == "day/dns.log.gz"
+    assert result.empty_files[0].fingerprint == "c" * 64
+
+
+def test_discovery_exclusion_limit_fails_before_network_request(sensor, mock_http):
+    requests = mock_http(lambda _: pytest.fail("Oversized exclusion lists must not be sent"))
+    with pytest.raises(RuntimeError, match="Too many blocked"):
+        asyncio.run(sensor.discover_files(["a" * 64] * 10001))
+    assert requests == []
+
+
+@pytest.mark.parametrize("fingerprint", [None, "", "not-a-fingerprint", "A" * 64])
+def test_discovery_rejects_missing_or_invalid_version_instead_of_using_legacy_protocol(sensor, file, mock_http, fingerprint):
+    from pydantic import ValidationError
+    payload = file.model_dump()
+    if fingerprint is None:
+        payload.pop("fingerprint")
+    else:
+        payload["fingerprint"] = fingerprint
+    requests = mock_http(lambda _: httpx.Response(200, json={"files": [payload]}))
+    with pytest.raises(ValidationError):
+        asyncio.run(sensor.discover_files())
+    assert len(requests) == 1  # No fallback GET /files or fabricated empty result.
+
+
+def test_current_file_reads_do_not_require_a_stable_archive_fingerprint(sensor, file, mock_http):
+    current = file.model_copy(update={"file": "current/conn.log", "archived": False})
+    requests = mock_http(lambda _: httpx.Response(200, json=batch_payload(current)))
+    asyncio.run(sensor.read_file(current, 100))
+    assert "fingerprint" not in requests[0].url.params
+
+
+@pytest.mark.parametrize("archived", [True, False])
+def test_typed_read_error_preserves_version_and_archive_metadata(sensor, file, mock_http, archived):
+    source = file.model_copy(update={"archived": archived})
+    mock_http(lambda _: httpx.Response(422, json={"detail": {"code": "oversized_file"}}))
+    with pytest.raises(SensorFileError) as error:
+        asyncio.run(sensor.read_file(source, 100))
+    assert error.value.issue.archived is archived
+    assert error.value.issue.fingerprint == source.fingerprint

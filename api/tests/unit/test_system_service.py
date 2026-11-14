@@ -24,7 +24,7 @@ def test_overview_delegates_to_active_data_summary(db, monkeypatch):
     assert SystemService(db).overview() == {"connections_total": 3}
 
 
-def test_no_reset_or_delete_operations_remain():
+def test_legacy_destructive_helpers_are_not_reintroduced_into_system_service():
     assert not hasattr(SystemService, "clear_database_all")
     assert not hasattr(SystemService, "reset_sensor")
 

@@ -157,3 +157,22 @@ def test_old_snapshot_server_name_uses_only_frozen_events_and_preserves_payload(
     query = db.scalars.call_args.args[0]
     assert "original-lot" in query.compile().params.values()
     assert query.get_final_froms() == [ArchiveRecord.__table__]
+
+
+@pytest.mark.parametrize("server_name", [None, "frozen.test"])
+def test_snapshot_with_saved_server_name_never_enriches_from_current_context(db, server_name):
+    record = SimpleNamespace(payload={"uid": "Cunit", "id": 1, "server_name": server_name})
+    db.scalars.return_value.all.return_value = [record]
+    page = ArchiveSnapshotRepository(db).page("lot", "connection", 20, 0)
+    assert page["items"][0]["server_name"] == server_name
+    db.scalars.assert_called_once()  # No context lookup, including when name was absent at archival.
+
+
+def test_old_snapshot_without_tls_name_stays_unavailable_instead_of_guessing(db):
+    record = SimpleNamespace(payload={"uid": "Cunit", "id": 1})
+    first = MagicMock()
+    first.all.return_value = [record]
+    db.scalars.side_effect = [first, [SimpleNamespace(parent_id="Cunit", payload={"fields": {}})]]
+    page = ArchiveSnapshotRepository(db).page("lot", "connection", 20, 0)
+    assert page["items"][0]["server_name"] is None
+    assert "server_name" not in record.payload

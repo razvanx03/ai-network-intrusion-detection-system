@@ -66,6 +66,43 @@ def sensor_request():
     return AnalysisRequest()
 
 
+def test_already_reported_file_issue_does_not_repeat_session_warning(analysis):
+    service, detector, session = analysis
+    session.file_issues = []
+    issue = SensorFileIssue(file="old/conn.log.gz", code="corrupt_file",
+                            archived=True, fingerprint="a" * 64, offset=333)
+
+    async def batches():
+        yield IngestionBatch(records=[], issue=issue)
+
+    service.ingestion.batches.side_effect = lambda: batches()
+    service.ingestion.note_issue.return_value = False
+    result = asyncio.run(service.run(7, sensor_request()))
+    assert result["analysis_session"].status == "completed"
+    assert result["analysis_session"].file_issues == []
+    assert result["new_connections_ingested"] == result["new_alerts_detected"] == 0
+    service.sessions.record_file_issue.assert_not_called()
+    service.ingestion.persist.assert_not_called()
+    detector.analyze_batch.assert_not_called()
+
+
+def test_problem_history_failure_is_not_reported_as_successful_analysis(analysis):
+    service, detector, _ = analysis
+
+    async def batches():
+        yield IngestionBatch(records=[], issue=SensorFileIssue(file="old/conn.log.gz", code="corrupt_file"))
+
+    service.ingestion.batches.side_effect = lambda: batches()
+    service.ingestion.note_issue.side_effect = SQLAlchemyError("unit history write failure")
+    with pytest.raises(AnalysisRunError) as error:
+        asyncio.run(service.run(7, sensor_request()))
+    assert error.value.code == "processing_failed"
+    service.sessions.finish.assert_called_once_with("unit-session", "failed", "processing_failed")
+    service.sessions.record_file_issue.assert_not_called()
+    service.db.rollback.assert_called_once()
+    detector.analyze_batch.assert_not_called()
+
+
 def test_protocol_context_is_committed_without_calling_classifier(analysis):
     service, detector, _ = analysis
     async def batches():

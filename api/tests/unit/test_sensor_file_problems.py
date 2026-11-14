@@ -6,6 +6,7 @@ from app.schemas.sensor import SensorFileIssue
 from app.repositories.sensor_file_problem_repository import SensorFileProblemRepository
 from app.services.sensor_file_problem_service import SensorFileProblemService, ProblemNotFoundError, ProblemNotBlockedError
 from app.services.analysis_service import AnalysisBusyError
+from app.repositories.reset_repository import ResetBusyError
 from app.services.ingestion_service import IngestionService
 from app.integrations.sensor_client import SensorFile, SensorFileList, SensorFileBatch
 
@@ -90,3 +91,99 @@ def test_retry_only_queues_known_blocked_problem_and_is_rolled_back_while_analys
     with pytest.raises(ProblemNotBlockedError):service.retry("resolved")
     monkeypatch.setattr("app.services.sensor_file_problem_service.AnalysisRepository", lambda _: SimpleNamespace(running=lambda:object()))
     with pytest.raises(AnalysisBusyError):service.retry("busy")
+
+
+@pytest.mark.parametrize("status", ["resolved", "outdated"])
+def test_inactive_problem_cannot_be_retried_and_transaction_is_rolled_back(db, status):
+    service = SensorFileProblemService(db)
+    service.problems = MagicMock()
+    problem = SimpleNamespace(status=status)
+    service.problems.lock.return_value = problem
+    with pytest.raises(ProblemNotBlockedError):
+        service.retry("problem")
+    assert problem.status == status
+    db.commit.assert_not_called()
+    db.rollback.assert_called_once()
+
+
+def test_pending_reset_blocks_problem_retry_before_status_change(db, monkeypatch):
+    service = SensorFileProblemService(db)
+    service.problems = MagicMock()
+    problem = SimpleNamespace(status="blocked")
+    service.problems.lock.return_value = problem
+    db.scalar.return_value = object()  # Running reset.
+    sessions = MagicMock()
+    monkeypatch.setattr("app.services.sensor_file_problem_service.AnalysisRepository", sessions)
+    with pytest.raises(ResetBusyError):
+        service.retry("problem")
+    assert problem.status == "blocked"
+    sessions.assert_not_called()
+    db.commit.assert_not_called()
+    db.rollback.assert_called_once()
+
+
+def test_queued_retry_is_idempotent_and_commit_failure_never_reports_success(db):
+    service = SensorFileProblemService(db)
+    service.problems = MagicMock()
+    service.problems.lock.return_value = SimpleNamespace(status="retry")
+    assert service.retry("problem") == {"status": "retry"}
+    db.reset_mock()
+    db.scalar.return_value = None
+    db.commit.side_effect = RuntimeError("unit commit failure")
+    with pytest.raises(RuntimeError, match="commit failure"):
+        service.retry("problem")
+    db.rollback.assert_called_once()
+
+
+@pytest.mark.parametrize("code", ["corrupt_file", "oversized_file"])
+def test_permanent_issue_without_version_is_reported_but_never_quarantined(db, code):
+    assert SensorFileProblemRepository(db).record("sensor", issue(code=code, fingerprint=None), "session")
+    db.add.assert_not_called()
+    db.execute.assert_not_called()
+
+
+def test_retry_failure_preserves_first_detection_and_updates_latest_error_metadata(db):
+    from datetime import datetime, timezone
+    first = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    problem = SimpleNamespace(status="retry", attempts=2, first_seen_at=first,
+        last_seen_at=first, first_session_id="first", code="corrupt_file", offset=333)
+    db.scalar.return_value = problem
+    assert SensorFileProblemRepository(db).record("sensor", issue(code="oversized_file", offset=512), "latest")
+    assert (problem.code, problem.offset, problem.attempts, problem.status) == ("oversized_file", 512, 3, "blocked")
+    assert (problem.first_seen_at, problem.first_session_id) == (first, "first")
+    assert problem.last_seen_at > first and problem.last_session_id == "latest"
+    db.add.assert_not_called()
+
+
+@pytest.mark.parametrize("error,status,code", [
+    (ProblemNotFoundError, 404, "import_problem_missing"),
+    (ProblemNotBlockedError, 409, "import_problem_not_blocked"),
+    (AnalysisBusyError, 409, "analysis_busy"),
+    (ResetBusyError, 409, "reset_pending"),
+])
+def test_retry_route_exposes_safe_error_codes_without_internal_details(db, monkeypatch, error, status, code):
+    from fastapi import HTTPException
+    from app.routes import sensor_file_problem_routes as routes
+    service = MagicMock()
+    service.retry.side_effect = error("private internal failure detail")
+    monkeypatch.setattr(routes, "SensorFileProblemService", lambda _: service)
+    with pytest.raises(HTTPException) as caught:
+        routes.retry("problem", db)
+    assert caught.value.status_code == status
+    assert caught.value.detail == {"code": code}
+
+
+def test_history_routes_require_cookie_auth_and_response_excludes_private_sensor_metadata():
+    from datetime import datetime, timezone
+    from app.routes.sensor_file_problem_routes import router
+    from app.routes.deps import get_current_user
+    from app.schemas.sensor import SensorFileProblemResponse
+    for route in router.routes:
+        assert any(dependency.call is get_current_user for dependency in route.dependant.dependencies)
+    response = SensorFileProblemResponse.model_validate(dict(id="problem", file="day/conn.log.gz",
+        code="corrupt_file", offset=333, status="blocked", attempts=1,
+        first_seen_at=datetime(2026, 1, 1), last_seen_at=datetime(2026, 1, 2),
+        first_session_id="first", last_session_id="last", sensor_url="https://private.invalid",
+        fingerprint="a" * 64))
+    assert response.first_seen_at.tzinfo == response.last_seen_at.tzinfo == timezone.utc
+    assert not {"sensor_url", "fingerprint"}.intersection(response.model_dump())

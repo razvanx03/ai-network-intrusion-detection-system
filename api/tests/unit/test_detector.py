@@ -132,3 +132,25 @@ def test_missing_deployment_is_not_silently_disabled(artifact):
 def test_enabled_deployment_loads_validated_classifier(artifact):
     module.DEPLOYMENT_PATH.write_text(json.dumps(artifact[0]), encoding="utf-8")
     assert module.load_detector().configured is True
+
+
+def test_logistic_classifier_uses_same_scoring_contract_without_random_forest_parameters(artifact, connection_factory):
+    manifest, bundle, model, _ = artifact
+    bundle["kind"] = "logistic_regression"
+    model.predict_proba.return_value = np.array([[0.5, 0.5]])
+    classifier = module.ConnectionClassifier(manifest)
+    findings = classifier.analyze_batch(prepare_connections([connection_factory(7)]))
+    model.set_params.assert_not_called()
+    assert classifier.name == "logistic_regression_unit"
+    assert len(findings) == 1 and findings[0].connection_ids == [7]
+    assert findings[0].confidence == 0.5
+
+
+@pytest.mark.parametrize("threshold,expected_ids", [(0.0, [1, 2]), (1.0, [2])])
+def test_valid_extreme_thresholds_include_scores_equal_to_boundary(artifact, connection_factory, threshold, expected_ids):
+    manifest, bundle, model, _ = artifact
+    bundle["threshold"] = threshold
+    model.predict_proba.return_value = np.array([[1.0, 0.0], [0.0, 1.0]])
+    classifier = module.ConnectionClassifier(manifest)
+    findings = classifier.analyze_batch(prepare_connections([connection_factory(1), connection_factory(2)]))
+    assert [f.connection_ids[0] for f in findings] == expected_ids

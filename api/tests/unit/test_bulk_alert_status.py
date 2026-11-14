@@ -37,6 +37,26 @@ def test_failed_commit_rolls_back(db):
     db.rollback.assert_called_once()
 
 
+def test_same_count_but_wrong_updated_ids_rolls_back_instead_of_claiming_success(db):
+    service = AlertService(db)
+    service.alert_repo = MagicMock()
+    service.alert_repo.update_many_statuses.return_value = [1, 99]
+    with pytest.raises(LookupError):
+        service.update_many_statuses(AlertBulkStatusUpdate(ids=[1, 2], status="RESOLVED"))
+    db.commit.assert_not_called()
+    db.rollback.assert_called_once()
+
+
+def test_repository_failure_rolls_back_without_attempting_commit(db):
+    service = AlertService(db)
+    service.alert_repo = MagicMock()
+    service.alert_repo.update_many_statuses.side_effect = RuntimeError("unit update failure")
+    with pytest.raises(RuntimeError, match="update failure"):
+        service.update_many_statuses(AlertBulkStatusUpdate(ids=[1], status="RESOLVED"))
+    db.commit.assert_not_called()
+    db.rollback.assert_called_once()
+
+
 def test_update_targets_only_selected_active_ai_findings(db):
     db.scalars.return_value.all.return_value = [2, 3]
     assert AlertRepository(db).update_many_statuses([2, 3], "FALSE_POSITIVE") == [2, 3]

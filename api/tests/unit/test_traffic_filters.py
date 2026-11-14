@@ -54,6 +54,7 @@ def test_dashboard_alerts_include_real_traffic_and_protocol_context_in_one_batch
     alert.connection = connection
     with patch("app.services.connection_service.ProtocolEventRepository") as context:
         context.return_value.available.return_value = {connection.uid: ["dns"]}
+        context.return_value.server_names.return_value = {}
         result = AlertService(db).serialize_alerts([alert])[0]
         context.return_value.available.assert_called_once_with([connection.uid])
     assert result.connection.orig_pkts == connection.orig_pkts

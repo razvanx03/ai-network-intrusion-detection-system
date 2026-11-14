@@ -116,3 +116,22 @@ def test_session_connection_page_enriches_context_without_losing_import_link(db,
     assert page["items"][0]["connection"].server_name == "example.test"
     assert page["items"][0]["connection"].available_logs == ["conn", "ssl"]
     assert page["items"][0]["file"] == "conn.log"
+
+
+def test_batched_enrichment_keeps_names_with_their_uid_and_does_not_guess_missing_names(db, connection_factory, monkeypatch):
+    repo = MagicMock()
+    repo.available.return_value = {"Cunit1": ["ssl"], "Cunit2": ["dns"]}
+    repo.server_names.return_value = {"Cunit1": "first.test"}
+    monkeypatch.setattr("app.services.connection_service.ProtocolEventRepository", lambda _: repo)
+    connections = [connection_factory(i, created_at=datetime.now(timezone.utc)) for i in [2, 1, 3]]
+    response = ConnectionService(db).with_context(connections)
+    assert [c.uid for c in response] == ["Cunit2", "Cunit1", "Cunit3"]
+    assert [c.server_name for c in response] == [None, "first.test", None]
+    assert [c.available_logs for c in response] == [["conn", "dns"], ["conn", "ssl"], ["conn"]]
+    repo.available.assert_called_once_with(["Cunit2", "Cunit1", "Cunit3"])
+    repo.server_names.assert_called_once_with(["Cunit2", "Cunit1", "Cunit3"])
+
+
+def test_empty_connection_page_does_not_query_protocol_events(db):
+    assert ConnectionService(db).with_context([]) == []
+    db.execute.assert_not_called()

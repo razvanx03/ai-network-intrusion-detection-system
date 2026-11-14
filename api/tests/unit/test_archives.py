@@ -82,6 +82,18 @@ def test_write_failures_roll_back_the_whole_lot(archives, failure):
     service.db.rollback.assert_called_once()
 
 
+@pytest.mark.parametrize("failure_at", ["restore_records", "commit"])
+def test_restore_failure_rolls_back_membership_without_rewriting_snapshot(archives, failure_at):
+    service, batch = archives
+    target = service.archives.restore_records if failure_at == "restore_records" else service.db.commit
+    target.side_effect = RuntimeError("unit restore failure")
+    with pytest.raises(RuntimeError, match="restore failure"):
+        service.change(batch.id)
+    service.db.rollback.assert_called_once()
+    service.snapshots.capture.assert_not_called()
+    service.archives.archive.assert_not_called()
+
+
 def test_archive_only_marks_active_rows_and_restore_only_matches_requested_lot(db):
     repo = ArchiveRepository(db)
     repo.archive(SimpleNamespace(id="batch", connections=0, alerts=0, sessions=0))

@@ -24,6 +24,93 @@ def ingestion(db, monkeypatch):
     return service, sensor
 
 
+def test_repaired_empty_archive_resolves_history_without_advancing_a_cursor(ingestion):
+    service, sensor = ingestion
+    service.problems = MagicMock()
+    service.problems.excluded_versions.return_value = ["a" * 64]
+    sensor.discover_files.return_value = SensorFileList(files=[], empty_files=[
+        {"file": "day/conn.log.gz", "fingerprint": "b" * 64}])
+
+    async def collect():
+        return [batch async for batch in service.batches()]
+
+    assert asyncio.run(collect()) == []
+    sensor.discover_files.assert_awaited_once_with(["a" * 64])
+    service.problems.resolve.assert_called_once_with(sensor.base_url, "day/conn.log.gz")
+    service.db.commit.assert_called_once()
+    service.cursors.advance.assert_not_called()
+    sensor.read_file.assert_not_awaited()
+
+
+def test_discovery_failure_does_not_resolve_history_or_advance_progress(ingestion):
+    service, sensor = ingestion
+    service.problems = MagicMock()
+    sensor.discover_files.side_effect = RuntimeError("unit manifest failure")
+
+    async def collect():
+        return [batch async for batch in service.batches()]
+
+    with pytest.raises(RuntimeError, match="manifest failure"):
+        asyncio.run(collect())
+    service.problems.resolve.assert_not_called()
+    service.cursors.advance.assert_not_called()
+    service.db.commit.assert_not_called()
+
+
+def test_completed_archive_manual_retry_replays_multiple_pages_with_compare_and_swap(ingestion, raw_record):
+    service, sensor = ingestion
+    service.problems = MagicMock()
+    service.problems.replay_needed.return_value = True
+    service.problems.excluded_versions.return_value = []
+    service.cursors.get.return_value = SimpleNamespace(offset=300, completed=True)
+    file = SensorFile(file="day/conn.log.gz", file_id="a" * 64, archived=True,
+                      first_ts=1, fingerprint="b" * 64)
+    sensor.discover_files.return_value = SensorFileList(files=[file])
+
+    def read(source, offset):
+        return SensorFileBatch(file=source.file, file_id=source.file_id, offset=offset,
+            next_offset=offset + 100, records=[raw_record], records_returned=1, has_more=offset == 0)
+
+    sensor.read_file.side_effect = read
+
+    async def consume():
+        async for batch in service.batches():
+            service.persist(batch)
+
+    asyncio.run(consume())
+    assert [call.args for call in sensor.read_file.await_args_list] == [(file, 0), (file, 100)]
+    assert [call.args for call in service.cursors.advance.call_args_list] == [
+        (sensor.base_url, file.file_id, file.file, 300, 100, False),
+        (sensor.base_url, file.file_id, file.file, 100, 200, True)]
+    service.problems.resolve.assert_called_once_with(sensor.base_url, file.file)
+    service.db.commit.assert_not_called()  # The analysis owns the batch transactions.
+
+
+@pytest.mark.parametrize("log_type", ["dns", "http", "ssl"])
+def test_invalid_context_batch_is_reported_with_version_without_persisting_partial_records(ingestion, log_type):
+    service, sensor = ingestion
+    service.problems = MagicMock()
+    service.problems.replay_needed.return_value = False
+    service.cursors.get.return_value = None
+    file = SensorFile(file=f"day/{log_type}.log.gz", file_id="a" * 64, archived=True,
+                      log_type=log_type, first_ts=1, fingerprint="b" * 64)
+    sensor.discover_files.return_value = SensorFileList(files=[file])
+    sensor.read_file.return_value = SensorFileBatch(file=file.file, file_id=file.file_id,
+        offset=0, next_offset=100, records_returned=2, has_more=False,
+        records=[{"uid": "Cvalid", "ts": 1}, {"ts": 2}])
+
+    async def collect():
+        return [batch async for batch in service.batches()]
+
+    batches = asyncio.run(collect())
+    assert len(batches) == 1 and batches[0].records == []
+    assert batches[0].issue == SensorFileIssue(file=file.file, code="corrupt_file",
+        offset=0, archived=True, fingerprint=file.fingerprint)
+    service.cursors.advance.assert_not_called()
+    service.problems.resolve.assert_not_called()
+    service.connections.create_batch.assert_not_called()
+
+
 def test_validation_precedes_cursor_advance_or_inserts(ingestion, raw_record):
     service, _ = ingestion
     batch = IngestionBatch(records=[raw_record, {**raw_record, "duration": -1}],

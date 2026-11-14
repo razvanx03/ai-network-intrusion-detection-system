@@ -148,6 +148,56 @@ async def test_sensor_client_rejects_unconfirmed_remote_results(mock_http, recei
         await SensorClient().reset_logs(ID)
 
 
+@run_async
+@pytest.mark.parametrize("status,payload,code", [
+    (404, {}, "reset_not_supported"),
+    (200, {"supported": False}, "reset_not_supported"),
+    (200, {"supported": "true"}, "reset_not_supported"),
+    (401, {}, "reset_sensor_failed"),
+    (503, {}, "reset_sensor_failed"),
+    (200, [], "reset_sensor_failed"),
+])
+async def test_reset_preflight_rejects_old_unauthorized_or_malformed_agents(mock_http, status, payload, code):
+    mock_http(lambda _: httpx.Response(status, json=payload))
+    with pytest.raises(SensorResetError) as error:
+        await SensorClient().require_reset_support()
+    assert error.value.code == code
+
+
+@run_async
+async def test_reset_preflight_timeout_is_safe_and_mock_mode_never_contacts_agent(mock_http):
+    def timeout(request):
+        raise httpx.ConnectTimeout("private remote address", request=request)
+
+    requests = mock_http(timeout)
+    client = SensorClient()
+    with pytest.raises(SensorResetError) as error:
+        await client.require_reset_support()
+    assert error.value.code == "reset_sensor_failed"
+    client.mock_mode = True
+    with pytest.raises(SensorResetError) as error:
+        await client.require_reset_support()
+    assert error.value.code == "reset_not_supported"
+    assert len(requests) == 1
+
+
+@run_async
+async def test_reset_transport_authenticates_preflight_and_requires_matching_completion_receipt(mock_http):
+    def respond(request):
+        if request.url.path == "/reset/capabilities":
+            return httpx.Response(200, json={"supported": True})
+        assert json.loads(request.content) == {"operation_id": ID, "confirmation": "RESET"}
+        return httpx.Response(200, json={"status": "completed", "operation_id": ID})
+
+    requests = mock_http(respond)
+    client = SensorClient()
+    await client.require_reset_support()
+    await client.reset_logs(ID)
+    assert [(r.method, r.url.path) for r in requests] == [("GET", "/reset/capabilities"), ("POST", "/reset")]
+    assert all(r.headers["X-API-Key"] == client.api_key for r in requests)
+    assert all(value == 310.0 for value in requests[1].extensions["timeout"].values())
+
+
 @pytest.fixture
 def broker(tmp_path, monkeypatch):
     # Linux locking is a simulated boundary on the Windows test host.
@@ -228,3 +278,62 @@ def test_archival_is_blocked_by_pending_reset_under_its_write_lock(db):
     service.archives.archive.assert_not_called()
     db.commit.assert_not_called()
     db.rollback.assert_called_once()
+
+
+@run_async
+async def test_pending_reset_resumes_same_id_without_starting_a_second_operation(reset_service):
+    service, sensor = reset_service
+    service.resets.get.return_value = SimpleNamespace(status="running")
+
+    async def remote(operation_id):
+        assert operation_id == ID
+        service.db.rollback.assert_called_once()
+        service.db.commit.assert_not_called()
+
+    sensor.reset_logs.side_effect = remote
+    assert await service.run(ID) == {"status": "completed"}
+    service.resets.begin.assert_not_called()
+    service.sessions.running.assert_not_called()
+    service.resets.clear_and_complete.assert_called_once_with(ID)
+    service.db.commit.assert_called_once()
+
+
+@run_async
+@pytest.mark.parametrize("failure_at", ["clear", "commit"])
+async def test_local_failure_after_remote_reset_rolls_back_and_retry_uses_same_receipt(reset_service, failure_at):
+    service, sensor = reset_service
+    service.resets.get.return_value = SimpleNamespace(status="running")
+    failure = RuntimeError("unit local storage failure")
+    if failure_at == "clear":
+        service.resets.clear_and_complete.side_effect = [failure, None]
+    else:
+        service.db.commit.side_effect = [failure, None]
+    with pytest.raises(RuntimeError, match="local storage failure"):
+        await service.run(ID)
+    assert service.db.rollback.call_count == 2  # Release read transaction, then undo local failure.
+    assert await service.run(ID) == {"status": "completed"}
+    assert [call.args for call in sensor.reset_logs.await_args_list] == [(ID,), (ID,)]
+    service.resets.begin.assert_not_called()
+
+
+def test_vm_restart_failure_retains_cleaned_receipt_and_retry_preserves_new_logs(broker):
+    original_command = broker.command.side_effect
+
+    def fail_restart(*args, **kwargs):
+        if args == ("/usr/bin/systemctl", "start", "zeek.service"):
+            raise RuntimeError("unit restart failed")
+        return original_command(*args, **kwargs)
+
+    (broker.SPOOL_ROOT / "conn.log").write_text("old", encoding="utf-8")
+    broker.command.side_effect = fail_restart
+    with pytest.raises(RuntimeError, match="restart failed"):
+        broker.reset(ID)
+    saved = json.loads((broker.STATE_ROOT / f"{ID}.json").read_text(encoding="utf-8"))
+    assert saved["phase"] == "cleaned"
+    assert not (broker.SPOOL_ROOT / "conn.log").exists()
+    (broker.SPOOL_ROOT / "conn.log").write_text("new", encoding="utf-8")
+    broker.command.reset_mock()
+    broker.command.side_effect = original_command
+    assert broker.reset(ID)["status"] == "completed"
+    assert (broker.SPOOL_ROOT / "conn.log").read_text(encoding="utf-8") == "new"
+    assert not any("stop" in call.args for call in broker.command.call_args_list)
