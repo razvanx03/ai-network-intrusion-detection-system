@@ -8,6 +8,7 @@ import json
 import math
 import os
 import socket
+import ssl
 import zlib
 from pathlib import Path
 from typing import Annotated, Any, BinaryIO
@@ -407,4 +408,9 @@ def read_logs(
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host=HOST, port=PORT)
+    cert, key = required("TLS_CERT_FILE"), required("TLS_KEY_FILE")
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(cert, key)
+    uvicorn.run(app, host=HOST, port=PORT, ssl_certfile=cert, ssl_keyfile=key,
+                ssl_version=ssl.PROTOCOL_TLS_SERVER)

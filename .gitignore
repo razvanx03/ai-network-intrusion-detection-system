@@ -77,3 +77,10 @@ app/.vite/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Installation TLS material (generated locally, never published)
+/certs/
+*.key
+*.pem
+*.p12
+*.pfx

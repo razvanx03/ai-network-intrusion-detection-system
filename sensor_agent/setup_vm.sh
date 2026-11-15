@@ -108,7 +108,7 @@ for iface in "$external_if" "$internal_if" "$management_if"; do
     ip link show dev "$iface" >/dev/null || die "Interface is absent: $iface"
 done
 [[ "$external_if" != "$internal_if" && "$external_if" != "$management_if" && "$internal_if" != "$management_if" ]] || die 'The three interfaces must be distinct.'
-[[ -f "$SOURCE_DIR/collector.py" && -f "$SOURCE_DIR/requirements.txt" ]] || die 'Copy collector.py and requirements.txt beside this script.'
+[[ -f "$SOURCE_DIR/provision_tls.py" && -f "$SOURCE_DIR/collector.py" && -f "$SOURCE_DIR/requirements.txt" ]] || die 'Copy collector.py and requirements.txt beside this script.'
 for path in "$AGENT_DIR" "$AGENT_DIR/.venv" "$AGENT_DIR/.env"; do
     [[ ! -L "$path" ]] || die "Refusing a symlink at $path"
 done
@@ -544,6 +544,12 @@ Path(sys.argv[2]).write_text(''.join(f'{key}={values[key]}\n' for key in require
 PY
 if [[ ! -f "$AGENT_DIR/.env" ]] || ! cmp -s "$work_dir/agent.env" "$AGENT_DIR/.env"; then backup_file "$AGENT_DIR/.env"; fi
 install -o "$agent_user" -g "$(id -gn "$agent_user")" -m 0600 "$work_dir/agent.env" "$AGENT_DIR/.env"
+"$AGENT_DIR/.venv/bin/python" "$SOURCE_DIR/provision_tls.py" --directory "$AGENT_DIR/tls" --host "$management_ip"
+chown root:"$(id -gn "$agent_user")" "$AGENT_DIR/tls" "$AGENT_DIR/tls/server.key" "$AGENT_DIR/tls/server.crt" "$AGENT_DIR/tls/ca.crt"
+chmod 0750 "$AGENT_DIR/tls"
+chmod 0640 "$AGENT_DIR/tls/server.key"
+chmod 0644 "$AGENT_DIR/tls/server.crt" "$AGENT_DIR/tls/ca.crt"
+printf 'TLS_CERT_FILE=%s/tls/server.crt\nTLS_KEY_FILE=%s/tls/server.key\n' "$AGENT_DIR" "$AGENT_DIR" >> "$AGENT_DIR/.env"
 # Run the import/configuration/log-read check as the actual service account.
 runuser -u "$agent_user" -g "$(id -gn "$agent_user")" -G zeek -- env -i PATH="$PATH" LANG=C.UTF-8 "$AGENT_DIR/.venv/bin/python" - "$AGENT_DIR/collector.py" <<'PY'
 import os
@@ -613,9 +619,11 @@ import json
 import sys
 import time
 import urllib.request
+import ssl
 config = dotenv_values(sys.argv[1])
-request = urllib.request.Request(f'http://{sys.argv[2]}:{sys.argv[3]}/health', headers={'X-API-Key': config['API_KEY']})
-opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+request = urllib.request.Request(f'https://{sys.argv[2]}:{sys.argv[3]}/health', headers={'X-API-Key': config['API_KEY']})
+context = ssl.create_default_context(cafile=str(__import__('pathlib').Path(sys.argv[1]).parent / 'tls/ca.crt'))
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=context))
 for attempt in range(20):
     try:
         with opener.open(request, timeout=2) as response:
@@ -634,9 +642,10 @@ done
 systemctl is-active --quiet nids-sensor.service || die 'Sensor service exited after startup.'
 printf '\nSUCCESS: Ubuntu gateway, Zeek and sensor setup completed. No reboot was issued.\n'
 printf 'Backups: %s\nSensor configuration/key: %s/.env (not printed)\n' "$backup_dir" "$AGENT_DIR"
-printf 'Backend settings: SENSOR_MOCK_MODE=False; SENSOR_AGENT_URL=http://%s:%s\n' "$management_ip" "$agent_port"
+printf 'Backend settings: SENSOR_MOCK_MODE=False; SENSOR_AGENT_URL=https://%s:%s\n' "$management_ip" "$agent_port"
 printf 'Copy API_KEY from the protected sensor .env to backend SENSOR_AGENT_API_KEY.\n'
 printf 'Windows client: use an address in %s, gateway %s and an explicit reachable DNS server.\n' "$client_subnet" "${internal_cidr%/*}"
 printf 'After reboot: sudo systemctl status zeek nids-sensor --no-pager\n'
 printf '  sudo /opt/zeek/bin/zeekctl status\n  sudo ethtool -k %s\n' "$internal_if"
 printf 'Zeek oneshot startup does not continuously monitor/restart a later capture crash.\n'
+printf 'Copy public tls/ca.crt to the host and set SENSOR_CA_CERT to its path. Never copy private keys.\n'

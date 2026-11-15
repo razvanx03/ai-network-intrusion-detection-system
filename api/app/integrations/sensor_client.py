@@ -1,5 +1,6 @@
 import json
 import logging
+import ssl
 from pathlib import Path
 from typing import List, Dict, Any
 from pydantic import BaseModel, Field
@@ -74,6 +75,11 @@ class SensorClient:
         self.samples_dir = Path(__file__).resolve().parent.parent.parent / "data" / "samples"
         self._mock_step = 0
 
+    def _http_client(self, timeout):
+        context = ssl.create_default_context(cafile=settings.SENSOR_CA_CERT)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        return httpx.AsyncClient(timeout=timeout, verify=context, trust_env=False)
+
     async def fetch_new_logs(self) -> SensorBatch:
         """Fetch unread Zeek conn.log items from remote agent or mock generator."""
         if self.mock_mode:
@@ -85,14 +91,14 @@ class SensorClient:
         return (await self.discover_files()).files
 
     async def health(self):
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with self._http_client(5.0) as client:
             return await client.get(f"{self.base_url}/health", headers={"X-API-Key": self.api_key})
 
     async def require_reset_support(self):
         if self.mock_mode:
             raise SensorResetError("reset_not_supported")
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with self._http_client(5.0) as client:
                 response = await client.get(f"{self.base_url}/reset/capabilities", headers={"X-API-Key": self.api_key})
                 if response.status_code == 404:
                     raise SensorResetError("reset_not_supported")
@@ -104,7 +110,7 @@ class SensorClient:
 
     async def reset_logs(self, operation_id):
         try:
-            async with httpx.AsyncClient(timeout=310.0) as client:
+            async with self._http_client(310.0) as client:
                 response = await client.post(f"{self.base_url}/reset", headers={"X-API-Key": self.api_key},
                                              json={"operation_id": operation_id, "confirmation": "RESET"})
                 response.raise_for_status()
@@ -120,14 +126,14 @@ class SensorClient:
     async def discover_files(self, excluded_versions: list[str] | None = None) -> SensorFileList:
         if excluded_versions is not None and len(excluded_versions) > 10000:
             raise RuntimeError("Too many blocked sensor versions for one discovery request.")
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with self._http_client(30.0) as client:
             response = await client.post(f"{self.base_url}/files/discover", headers={"X-API-Key": self.api_key},
                                          json={"excluded_versions": excluded_versions or []})
             response.raise_for_status()
             return SensorFileList.model_validate(response.json())
 
     async def read_file(self, file: SensorFile, offset: int) -> SensorFileBatch:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with self._http_client(60.0) as client:
             response = await client.get(
                 f"{self.base_url}/logs", headers={"X-API-Key": self.api_key},
                 params={"file": file.file, "file_id": file.file_id, "offset": offset, "limit": 500,

@@ -1,7 +1,7 @@
 # Zeek sensor agent
 
 The host backend pulls connection and DNS/HTTP/TLS logs during an analysis.
-`collector.py` is the API-key-authenticated HTTP reader running on Ubuntu; the
+`collector.py` is the API-key-authenticated HTTPS reader running on Ubuntu; the
 main API, SQLite database and AI inference remain on the host. Analyses can be
 requested manually or automatically by the signed-in application's availability
 cycle. The collector does not push logs, schedule AI analysis or train models.
@@ -36,7 +36,7 @@ address (DHCP or an existing static configuration). Check addresses with
 options. The three adapters must be distinct and their subnets must not overlap.
 
 Copy the complete directory to Ubuntu. Setup requires `setup_vm.sh`,
-`collector.py`, `requirements.txt`, `reset_logs.py` and `nids-reset.service`
+`collector.py`, `requirements.txt`, `provision_tls.py`, `reset_logs.py` and `nids-reset.service`
 together. From the **VM console**, run:
 
 ```bash
@@ -107,16 +107,18 @@ Configure the Windows host backend separately:
 
 ```dotenv
 SENSOR_MOCK_MODE=False
-SENSOR_AGENT_URL=http://192.168.56.101:8000
+SENSOR_AGENT_URL=https://192.168.56.101:8000
 SENSOR_AGENT_API_KEY=<same API_KEY as /opt/nids-sensor/.env>
+SENSOR_CA_CERT=certs/sensor-ca.crt
 ```
 
 Read/copy the key locally from the protected file; do not commit either `.env` or
 paste the key into shared logs. Restart the backend after changing its configuration.
-HTTP does not encrypt the key or logs. The current installer does not generate
-TLS certificates or configure HTTPS; certificate/trust provisioning is planned
-separately. Use the trusted isolated management network and restrict access;
-configure verified HTTPS separately before using an untrusted network.
+Copy `/opt/nids-sensor/tls/ca.crt` to host `certs/sensor-ca.crt` through the VM
+console/Guest Control or another trusted transfer. This public file establishes
+trust in this particular installation. Never obtain initial trust through an
+unverified HTTP download. The backend validates certificates and host identity;
+remote HTTP URLs are rejected. Mock mode does not require certificate material.
 
 The Windows client VM must be attached to the same Internal Network and configured
 with a client address (e.g. `192.168.50.2/24`), gateway `192.168.50.1`, and a reachable
@@ -158,7 +160,7 @@ Other Zeek log types and TSV are not imported by this collector.
 ## Backend and network
 
 Set the root project `.env` to `SENSOR_MOCK_MODE=False`,
-`SENSOR_AGENT_URL=http://UBUNTU_MANAGEMENT_IP:8000`, and
+`SENSOR_AGENT_URL=https://UBUNTU_MANAGEMENT_IP:8000`, and
 `SENSOR_AGENT_API_KEY` equal to the agent's `API_KEY`. Restart the backend after
 configuration changes. Run the backend from `api/` when using its default relative
 SQLite URL. Startup creates the `sensor_cursors` table if missing.
@@ -167,7 +169,7 @@ The Windows client routes lab traffic through Ubuntu's internal interface. A sep
 host-only interface lets the host backend reach the sensor through a separate
 management address. Full setup binds the agent to that address; an older/manual
 installation may bind differently. Binding and firewall rules must match the
-intended access scope. HTTP sends the API key without transport encryption.
+intended access scope. HTTPS encrypts the API key and log payloads.
 
 ## Log locations and context
 
@@ -244,7 +246,8 @@ The application's Settings menu has a separate permanent full reset requiring
 typed RESET confirmation. It is not a troubleshooting action to run automatically.
 
 For an existing installation, copy the updated sensor_agent directory to Ubuntu
-and run `sudo bash sensor_agent/install_reset.sh`. It discovers the existing
+enable HTTPS with the scoped updater above first, then run
+`sudo bash sensor_agent/install_reset.sh`. It discovers the existing
 non-root collector service/user, updates its active script (`collector.py` or the
 legacy `sensor_agent.py` filename) and installs `nids-reset.service` with the
 root-owned `reset_logs.py` broker. It preserves .env and gateway settings,
@@ -287,3 +290,59 @@ the problem; failed explicit retries update the same row. Existing records/event
 are deduplicated on replay. The source archives are never modified. Metadata-only
 changes can also trigger a retry. Deploy matching collector and backend versions;
 there is no silent legacy-protocol fallback.
+
+## HTTPS certificates and laptop installations
+
+Fresh `setup_vm.sh` runs `provision_tls.py` automatically. It creates a separate
+3072-bit RSA CA and server key pair with an IP SAN for the configured management
+address, SHA-256 signatures, server-auth usage and approximately ten-year validity.
+The CA expires a day after the initial server certificate. Repeated setup keeps
+valid certificates and keys. Partial/mismatched material or a changed address
+fails explicitly; it never silently replaces trust. TLS 1.2 or newer is required.
+
+For an existing sensor (including the legacy desktop installation), copy this
+sensor_agent directory and run, using the actual management address:
+
+```bash
+sudo bash sensor_agent/install_https.sh 192.168.56.101
+```
+
+This scoped updater backs up the existing collector, .env and TLS material under
+root-only `/var/backups/nids-https.*`, preserves the API key, updates the collector,
+sets its explicit management bind address and restarts only nids-sensor.service.
+It neither clears logs nor changes Zeek/gateway configuration. It checks verified,
+authenticated HTTPS health. A failed upgrade exits visibly; inspect its backup and
+service journal. The legacy service's script name and working directory stay intact.
+
+The service reads `TLS_CERT_FILE` and `TLS_KEY_FILE` from its protected .env.
+The TLS directory is root-owned and readable by the service group. The server key
+is `0640`; `tls/private/ca.key` stays root-only (`0600`, parent `0700`). Only the
+public `tls/ca.crt` goes to the backend. Do not commit or copy private keys into
+another installation. Repository `certs/`, *.key and *.pem are ignored by Git.
+
+On a laptop with new VMs, copy/clone the source and transfer the selected AI model
+as documented in the root README. Run setup there to generate fresh keys, securely
+copy that laptop VM's public CA to that laptop's `certs/sensor-ca.crt`, set its
+actual HTTPS URL/API key and restart the backend. Local .env and generated TLS
+files are installation configuration, not GitHub content.
+
+For server certificate renewal or a changed management IP:
+
+```bash
+sudo bash sensor_agent/install_https.sh ACTUAL_MANAGEMENT_IP --renew
+```
+
+This preserves the CA and replaces the server key/certificate; existing host trust
+still works. The certificate cannot outlive its CA. When the CA has less than 30
+days left, provision a new CA explicitly and redistribute its public certificate
+through a trusted channel; retain protected backups for recovery. There is no
+silent renewal or trust rotation. Check dates with:
+
+```bash
+openssl x509 -in /opt/nids-sensor/tls/server.crt -noout -dates -ext subjectAltName
+```
+
+Use the actual service working directory for a legacy installation. Backend HTTP
+clients disable environment proxies and verify using only the configured CA.
+All sensor calls, including health, discovery, reads and reset, use this transport.
+Capture and AI inputs are unchanged. Do not run a destructive reset merely to test TLS.

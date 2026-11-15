@@ -22,15 +22,29 @@ unit_settings = SimpleNamespace(
     ADMIN_USERNAME="unit-admin", ADMIN_PASSWORD="unit-only-password",
     DATABASE_URL="sqlite://", CORS_ORIGINS=["https://unit.invalid"],
     SENSOR_MOCK_MODE=False, SENSOR_AGENT_URL="https://sensor.invalid",
-    SENSOR_AGENT_API_KEY="unit-only-sensor-key",
+    SENSOR_AGENT_API_KEY="unit-only-sensor-key", SENSOR_CA_CERT=None,
 )
 config_dependency = ModuleType("app.core.config")
 config_dependency.settings = unit_settings
 sys.modules["app.core.config"] = config_dependency
 
 
+@pytest.fixture(scope="session")
+def unit_ca(tmp_path_factory):
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[2] / "sensor_agent/provision_tls.py"
+    spec = importlib.util.spec_from_file_location("unit_ca_helper", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    directory = tmp_path_factory.mktemp("synthetic-tls")
+    module.provision(directory, "192.0.2.10")
+    return str(directory / "ca.crt")
+
+
 @pytest.fixture(autouse=True)
-def forbid_external_io(monkeypatch):
+def forbid_external_io(monkeypatch, unit_ca):
+    monkeypatch.setattr(unit_settings, "SENSOR_CA_CERT", unit_ca)
     def forbidden(*args, **kwargs):
         raise AssertionError("Unit tests must not connect to a database or network.")
 

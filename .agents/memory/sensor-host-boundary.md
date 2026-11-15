@@ -20,21 +20,40 @@ Service health establishes HTTP availability, not successful packet capture or
 end-to-end ingestion. No VM or backend state is guaranteed by this note.
 
 
-## Planned sensor HTTPS (user decision, 2026-11-14)
+## Verified sensor HTTPS (2026-11-15)
 
-User wants HTTPS for backend-on-host to Ubuntu sensor, deferred to a later task;
-do not implement as a side effect of other improvements. Automate provisioning in
-the maintained setup so a separate laptop installation with its own Ubuntu and
-Windows VMs receives fresh installation-specific keys/certificates. Keep the API
-key for client authorization; backend must verify the sensor certificate using
-the local CA, without disabling verification. Private sensor/CA keys must not be
-copied into the frontend or committed. Provision public CA trust to the backend,
-cover the configured sensor IP/name, and document expiry/renewal. Browser/backend
-localhost HTTP is outside this planned change; Zeek capture, log contents and AI
-inference should remain unchanged. Certificate failure must visibly stop fetching,
-while Zeek continues recording. Verify ingestion and reset operations after setup.
+User explicitly requested implementation and deployment on branch codex/sensor-https.
+The maintained setup now provisions an installation CA and IP-SAN server certificate
+(approximately ten years). Scoped install_https.sh MANAGEMENT_IP supports legacy
+service paths without reconfiguring gateway/Zeek or deleting logs. --renew preserves
+CA trust while renewing the server identity. Keep private keys on their installation;
+copy only public tls/ca.crt through a trusted channel to host certs/sensor-ca.crt.
+A laptop with new VMs generates its own material; source and model are transferable,
+installation .env and keys are not Git content. CA expiration needs deliberate new
+trust distribution. The backend requires an HTTPS origin and valid SENSOR_CA_CERT
+in remote mode, resolves relative paths from repository root and uses verified TLS
+with environment proxies disabled on every sensor call. API-key authorization remains.
 
-Read-only evidence at discussion time: configured sensor endpoint used HTTP on
-192.168.56.101:8000 and X-API-Key. Host listeners were loopback-only (::1:5173,
-127.0.0.1:8000); SQLite is local. Effective VM firewall rules were not audited.
-This is a future implementation decision, not evidence that TLS is deployed.
+Deployment evidence: existing Ubuntu service working directory was
+/home/ubuntu/Desktop/nids_agent, script sensor_agent.py, management 192.168.56.101.
+Verified authenticated HTTPS health/discovery, bounded current and healthy archive
+reads, reset capability (not destructive reset), rejection of missing API key,
+untrusted CA, wrong hostname and plaintext HTTP. Host API through Vite successfully
+restored auth, queried data/sessions and ran AI ingestion over HTTPS. Repeat analysis
+reported no import issues; retained corrupt archives were quarantined normally.
+Capture remains bound to the client LAN. Two Windows client pings were captured
+and imported over HTTPS (ICMP 2/2 packets); a HEAD example.com probe returned 200
+and appeared in Zeek http.log. 450 isolated backend units and frontend build passed.
+No reboot test or port-scan test was run;
+user reserved the attack test for themselves. These are dated observations, not
+ongoing guarantees of VM availability.
+
+During deployment root pip inherited umask 077 and newly installed optional Python
+packages were unreadable to the service account. Evidence was uvloop/websockets
+import errors. Corrected package readability and installer dependency umask to 022;
+normal service startup and verified HTTPS then passed. Bash copies require LF;
+VirtualBox copyto uses absolute host source paths.
+
+Configuration comment preference (2026-11-15): describe the setting neutrally;
+do not put task-specific handoff instructions (such as "copied from this
+installation") in .env examples. Keep reusable setup steps in documentation.
