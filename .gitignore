@@ -54,8 +54,9 @@ yarn-error.log*
 .vite/
 app/.vite/
 
-# AI models (large trained binaries if generated locally)
+# AI artifacts: publish only the selected deployment model
 *.joblib
+!api/app/ai/models/selected.joblib
 *.pkl
 !api/app/ai/models/.gitkeep
 

@@ -110,11 +110,11 @@ python -m venv api/.venv
 & api/.venv/Scripts/python.exe -m pip install -r api/requirements.txt
 ```
 
-Before starting the API, reproduce the selected model using the
-[AI guide](ai/README.md), or obtain a trusted `selected-ai-model.zip` exported from
-another installation and extract it into the repository root. The archive carries
-`api/app/ai/models/selected.joblib`, its deployment manifest and pinned backend
-requirements. Install the requirements matching that artifact.
+The selected trained model, `api/app/ai/models/selected.joblib`, is included in
+Git alongside its deployment manifest and pinned backend requirements. A fresh
+clone already contains the artifact; no separate model transfer or training is
+needed. Install the pinned requirements before starting the API. To intentionally
+replace the model, follow the [AI guide](ai/README.md).
 
 `api/app/ai/deployment.json` currently enables `cic-endpoint_pairs-42` /
 `random_forest`. An enabled model with a missing artifact, wrong SHA256, incompatible

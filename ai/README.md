@@ -199,9 +199,12 @@ configuration. A missing artifact, wrong SHA256, schema mismatch or incompatible
 dependency version fails startup; it never silently disables the selected model.
 To explicitly disable inference, set `enabled` to `false` in that file.
 
-The selected artifact is Git-ignored. A fresh checkout must reproduce the selected
-run or receive `.ai-workspace/export/selected-ai-model.zip`, extracted into the
-repository root. Install the pinned backend requirements in the laptop environment.
+The selected deployment artifact `api/app/ai/models/selected.joblib` is versioned
+with its SHA-256 manifest and pinned backend requirements. A fresh checkout
+contains the trained model; install those requirements in the laptop environment.
+Other model artifacts and downloaded datasets remain Git-ignored. The optional
+`.ai-workspace/export/selected-ai-model.zip` remains available for offline transfer
+or intentionally deploying another selected run.
 Do not load untrusted joblib/pickle artifacts: their format can execute code.
 The export contains only the selected artifact, deployment manifest and backend
 requirements, with no credentials, database or captured traffic.
