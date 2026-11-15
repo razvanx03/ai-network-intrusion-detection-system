@@ -133,6 +133,10 @@ processes, other Zeek series, conflicting internal routes/addresses and complex
 bridge/bond/VLAN configurations. It does not disable these safeguards or unrelated
 firewalls automatically. Integrate such custom configurations explicitly first.
 
+Package installation waits up to five minutes for dpkg's lock when unattended
+updates are still running after boot. It never deletes package-manager locks or
+interrupts the updater; a timeout remains an explicit setup failure.
+
 Backups are kept in a root-only `/var/backups/nids-vm-setup.*` directory; the path is
 printed on completion or failure. They may include credentials and must remain
 private. Package/network/service installation is not a single atomic transaction:
@@ -320,8 +324,8 @@ is `0640`; `tls/private/ca.key` stays root-only (`0600`, parent `0700`). Only th
 public `tls/ca.crt` goes to the backend. Do not commit or copy private keys into
 another installation. Repository `certs/`, *.key and *.pem are ignored by Git.
 
-On a laptop with new VMs, copy/clone the source and transfer the selected AI model
-as documented in the root README. Run setup there to generate fresh keys, securely
+On a laptop with new VMs, copy/clone the source including the versioned selected
+AI model, as documented in the root README. Run setup there to generate fresh keys, securely
 copy that laptop VM's public CA to that laptop's `certs/sensor-ca.crt`, set its
 actual HTTPS URL/API key and restart the backend. Local .env and generated TLS
 files are installation configuration, not GitHub content.

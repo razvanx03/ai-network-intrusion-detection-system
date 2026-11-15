@@ -8,6 +8,7 @@ present state of a VM. They are not executable controls.
 | Note | Read when |
 |---|---|
 | [Sensor and host responsibilities](.agents/memory/sensor-host-boundary.md) | Deploying the collector, configuring the backend or explaining the data flow |
+| [Fresh laptop setup](.agents/memory/laptop-setup.md) | Preparing fresh VirtualBox guests and local dependencies |
 | [Rotation and ingestion progress](.agents/memory/ingestion-progress.md) | Changing log discovery, retries, cursors or reset operations |
 | [Capture and offloading](.agents/memory/zeek-capture.md) | Configuring Zeek autostart or investigating missing/incorrect traffic |
 | [Graphical login investigation](.agents/memory/ubuntu-graphical-login.md) | Investigating a black screen on the Ubuntu VM |

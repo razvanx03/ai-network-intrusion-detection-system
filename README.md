@@ -17,7 +17,7 @@ Windows client VM -> Ubuntu gateway VM -> Internet
                      | Zeek capture on the client-LAN interface
                      | conn.log, dns.log, http.log, ssl.log
                      v
-Host backend <--- authenticated HTTP log reads over host-only management network
+Host backend <--- authenticated HTTPS log reads over host-only management network
   | SQLite: traffic, context, findings, sessions, cursors and archive snapshots
   | AI inference: newly imported connection UIDs only
   v
@@ -46,8 +46,8 @@ See the [sensor setup guide](sensor_agent/README.md) and
 - Node.js 20.19+ in the 20.x line, or 22.12+, and npm.
 - Ubuntu 24.04 with systemd for the sensor VM, three configured network adapters
   and an existing non-root account with sudo.
-- A trusted selected AI artifact, reproduced or transferred separately; trained
-  artifacts, databases, credentials and downloaded datasets are not committed.
+- The versioned selected AI artifact matching `api/app/ai/deployment.json`;
+  databases, credentials, downloaded datasets and experimental artifacts stay local.
 
 The application currently uses SQLite-specific ingestion and query behavior.
 Changing `DATABASE_URL` to a different database engine alone is not a supported

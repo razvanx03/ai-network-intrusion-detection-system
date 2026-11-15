@@ -303,7 +303,9 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 # Suppress package prompts and avoid saving firewall state before our own rules.
 printf 'iptables-persistent iptables-persistent/autosave_v4 boolean false\niptables-persistent iptables-persistent/autosave_v6 boolean false\n' | debconf-set-selections
-apt-get install -y curl gpg ca-certificates ethtool iptables iptables-persistent python3-venv python3-yaml acl
+# Fresh boots can still be applying unattended security updates. Let apt wait
+# for dpkg's lock for a bounded interval; never remove locks or stop the updater.
+apt-get -o DPkg::Lock::Timeout=300 install -y curl gpg ca-certificates ethtool iptables iptables-persistent python3-venv python3-yaml acl
 # Stop only the existing managed instances before changing capture/network state.
 for unit in nids-sensor.service nids-reset.service zeek.service; do
     if [[ "$(systemctl show "$unit" -p LoadState --value)" != not-found ]]; then systemctl stop "$unit"; fi
@@ -386,7 +388,7 @@ if [[ ! -x "$ZEEK_DIR/bin/zeek" ]]; then
     printf 'deb [signed-by=/usr/share/keyrings/nids-zeek.gpg] %s/ /\n' "$REPO_URL" > "$work_dir/zeek.list"
     write_file "$work_dir/zeek.list" /etc/apt/sources.list.d/security-zeek.list 0644
     apt-get update
-    apt-get install -y zeek-9.0 zeekctl-9.0
+    apt-get -o DPkg::Lock::Timeout=300 install -y zeek-9.0 zeekctl-9.0
 fi
 [[ "$("$ZEEK_DIR/bin/zeek" --version 2>&1)" == *'version 9.0.'* ]] || die 'Installed Zeek version is not 9.0.x.'
 for path in bin/zeekctl etc/node.cfg share/zeek/site/local.zeek share/zeekctl/scripts/post-terminate share/zeekctl/scripts/archive-log; do
