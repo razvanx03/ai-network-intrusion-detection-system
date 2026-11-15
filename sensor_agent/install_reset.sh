@@ -21,6 +21,18 @@ else
     printf 'Unsupported sensor command. No service was changed.\n' >&2; exit 1
 fi
 [[ -f "$agent_script" && ! -L "$agent_script" ]] || exit 1
+# This collector requires TLS. Upgrade old HTTP installations with install_https.sh first.
+"$agent_dir/.venv/bin/python" - "$agent_dir/.env" <<'PY'
+from dotenv import dotenv_values
+from pathlib import Path
+import ssl, sys
+config = dotenv_values(sys.argv[1])
+cert, key = config.get('TLS_CERT_FILE'), config.get('TLS_KEY_FILE')
+if not cert or not key:
+    sys.exit('Enable HTTPS using install_https.sh MANAGEMENT_IP before updating reset support.')
+ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER).load_cert_chain(cert, key)
+PY
+
 [[ -d /opt/zeek/logs && -d /opt/zeek/spool/zeek && ! -L /opt/zeek/logs && ! -L /opt/zeek/spool/zeek ]] || exit 1
 [[ ! -L /usr/local/libexec/nids-reset-logs.py && ! -L /etc/systemd/system/nids-reset.service ]] || exit 1
 for file in collector.py reset_logs.py nids-reset.service; do [[ -f "$source_dir/$file" ]] || exit 1; done

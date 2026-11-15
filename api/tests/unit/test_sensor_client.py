@@ -197,3 +197,23 @@ def test_typed_read_error_preserves_version_and_archive_metadata(sensor, file, m
         asyncio.run(sensor.read_file(source, 100))
     assert error.value.issue.archived is archived
     assert error.value.issue.fingerprint == source.fingerprint
+
+
+def test_every_sensor_request_requires_verified_tls_and_ignores_environment_proxy(sensor, monkeypatch):
+    import ssl
+    captured = {}
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: captured.update(kwargs))
+    sensor._http_client(17)
+    assert captured["trust_env"] is False
+    assert captured["verify"].check_hostname
+    assert captured["verify"].verify_mode == ssl.CERT_REQUIRED
+    assert captured["verify"].minimum_version >= ssl.TLSVersion.TLSv1_2
+    assert captured["timeout"] == 17
+
+
+def test_bad_ca_fails_before_any_authenticated_request(sensor, monkeypatch, tmp_path):
+    from app.integrations.sensor_client import settings
+    monkeypatch.setattr(settings, "SENSOR_CA_CERT", str(tmp_path / "missing-ca.crt"))
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: pytest.fail("Client must not be opened"))
+    with pytest.raises(FileNotFoundError):
+        asyncio.run(sensor.health())

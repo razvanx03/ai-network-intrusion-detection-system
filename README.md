@@ -89,7 +89,8 @@ Review every setting before starting:
 | `CORS_ORIGINS` | Explicit browser origins allowed to use the cookie-authenticated API |
 | `COOKIE_SECURE`, `COOKIE_SAMESITE` | Cookie settings appropriate to local HTTP or deployed HTTPS |
 | `SENSOR_MOCK_MODE` | `True`: explicit bundled sample mode; `False`: real Ubuntu sensor |
-| `SENSOR_AGENT_URL` | Sensor management endpoint, e.g. `http://192.168.56.101:8000` |
+| `SENSOR_AGENT_URL` | Verified HTTPS sensor origin, e.g. `https://192.168.56.101:8000` |
+| `SENSOR_CA_CERT` | Public installation CA file; relative paths resolve from the repository root, required for remote mode |
 | `SENSOR_AGENT_API_KEY` | The same secret as the sensor's protected `API_KEY` |
 | `VITE_API_BASE_URL` | Frontend API base; `/api` uses Vite's local backend proxy |
 
@@ -337,12 +338,15 @@ so a copied logged-out token stays rejected after restart. New sessions have
 unique token IDs. Failed revocation storage fails logout rather than claiming
 success. Full data reset preserves authentication and revocations.
 
-The current sensor setup uses **HTTP with `X-API-Key`**, bound by the installer to
-the management address. HTTP does not encrypt the key or logs. HTTPS provisioning
-and certificate trust are not yet implemented by the setup scripts; local
-certificate automation is planned separately. Browser/backend loopback HTTP is a
-different link. Keep management access restricted; CORS is not a network firewall.
-For an HTTPS browser deployment, configure secure-cookie options explicitly.
+The sensor setup uses **HTTPS with `X-API-Key`**, bound by the installer to
+the management address. HTTPS protects the API key, commands and returned logs. The installer generates
+an installation-specific CA and server certificate (approximately ten years).
+Copy only the public `tls/ca.crt` from the sensor to host `certs/sensor-ca.crt`;
+set `SENSOR_CA_CERT=certs/sensor-ca.crt`. The backend rejects missing trust files,
+HTTP remote URLs, expired/untrusted certificates and mismatched server addresses.
+It does not install the CA into Windows/browser global trust. Keep the API key
+for caller authorization. Browser-to-localhost development HTTP is unchanged.
+See [sensor HTTPS setup and renewal](sensor_agent/README.md#https-certificates-and-laptop-installations).
 
 ## Development checks
 

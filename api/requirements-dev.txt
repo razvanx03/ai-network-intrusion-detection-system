@@ -2,3 +2,6 @@
 
 pytest==9.1.1
 pytest-cov==7.1.0
+
+# Synthetic TLS provisioning fixtures (no deployed certificates)
+cryptography>=43.0.0

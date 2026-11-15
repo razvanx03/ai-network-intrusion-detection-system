@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import List, Union
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Locate root directory and ensure .env exists
@@ -46,6 +46,25 @@ class Settings(BaseSettings):
     SENSOR_MOCK_MODE: bool
     SENSOR_AGENT_URL: str
     SENSOR_AGENT_API_KEY: str
+    SENSOR_CA_CERT: str
+
+    @model_validator(mode="after")
+    def validate_sensor_tls(self):
+        if not self.SENSOR_MOCK_MODE:
+            from urllib.parse import urlsplit
+            import ssl
+            url = urlsplit(self.SENSOR_AGENT_URL)
+            if url.scheme != "https" or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ("", "/"):
+                raise ValueError("SENSOR_AGENT_URL must be an HTTPS origin without credentials, path, query or fragment.")
+            if not self.SENSOR_CA_CERT.strip():
+                raise ValueError("SENSOR_CA_CERT is required for a remote sensor.")
+            path = Path(self.SENSOR_CA_CERT)
+            if not path.is_absolute():
+                path = ROOT_DIR / path
+            ssl.create_default_context(cafile=str(path))
+            self.SENSOR_CA_CERT = str(path)
+        return self
+
 
     @field_validator("CORS_ORIGINS", mode="before")
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
